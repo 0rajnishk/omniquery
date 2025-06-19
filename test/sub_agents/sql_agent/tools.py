@@ -147,13 +147,14 @@ def execute_sql_query(query: str) -> str:
     Returns:
         Formatted results as a string
     """
+    print(f"Executing SQL query: {query}", '*'*50)
     try:
         # Clean and validate SQL
         sql_query = _clean_sql_response(query)
         
         # Execute query
         data = _execute_sql(sql_query)
-        
+        print(f"Query executed successfully, retrieved {len(data)} rows.", '*'*50)
         # Prepare summary
         return _prepare_data_summary(data)
     except Exception as e:
@@ -161,4 +162,5 @@ def execute_sql_query(query: str) -> str:
 
 def get_schema() -> str:
     """Get the database schema information."""
+    print("Retrieving schema information...", '*'*50)
     return _get_schema_info() 

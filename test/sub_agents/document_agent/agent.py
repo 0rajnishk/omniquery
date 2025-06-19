@@ -7,15 +7,6 @@ def search_documents(query: str) -> str:
     results = similarity_search(query)
     return "\n\n".join(results)
 
-# # Create the document search tool
-# document_search_tool = Tool(
-#     name="document_search",
-#     description="Search through documents using similarity search",
-#     function=search_documents
-# )
-
-
-
 document_agent = Agent(
     name="document_agent",
     model="gemini-2.0-flash",

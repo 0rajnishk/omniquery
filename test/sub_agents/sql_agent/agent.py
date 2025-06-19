@@ -1,37 +1,42 @@
 from google.adk.agents import Agent
-from .tools import execute_sql_query
-from .schema_agent import schema_agent
+from .tools import get_schema
+from .query_executor_agent import query_executor_agent
 
 sql_agent = Agent(
     name="sql_agent",
     model="gemini-2.0-flash",
-    description="SQL agent for medical database queries",
+    description="SQL agent for generating SQL queries based on natural language",
     instruction="""
-    You are a SQL agent specialized in querying medical databases.
-    Your role is to help users find information about patients, treatments, and medical records.
+    You are a SQL agent specialized in converting natural language questions into SQL queries.
+    Your role is to understand user questions and generate appropriate SQL queries.
 
     When a user asks a question:
-    1. If they need information about the database structure, delegate to the schema_agent
-    2. For data queries, use the execute_sql_query tool to run SQL queries
-    3. Provide clear and concise answers based on the query results
+    1. Use the get_schema tool to understand the database structure
+    2. Generate an appropriate SQL query based on the schema and user's question
+    3. Delegate the query execution to the query_executor_agent
+    4. Provide a natural language response based on the query results
 
     Focus on:
-    - Patient demographics (age, gender, blood type)
-    - Medical conditions and diagnoses
-    - Treatment information (medications, test results)
-    - Hospital information (admission dates, doctors, rooms)
-    - Billing and insurance details
+    - Understanding the database schema
+    - Converting natural language to SQL
+    - Ensuring queries are safe and efficient
+    - Maintaining data privacy
 
-    Always maintain patient confidentiality and provide information in a clear, structured manner.
-    If a query would expose sensitive information, explain why it cannot be provided.
+    Example workflow:
+    1. User asks: "How many patients are there?"
+    2. You check the schema to understand the table structure
+    3. You generate: "SELECT COUNT(*) FROM med"
+    4. You delegate to query_executor_agent
+    5. You format the response: "There are X patients in the database"
 
-    For schema-related questions like:
-    - "What tables are available?"
-    - "What columns does the med table have?"
-    - "Show me the database structure"
-    - "What data types are used?"
-    Delegate these to the schema_agent.
+    Always ensure:
+    - Queries are SELECT statements only
+    - No dangerous operations (DROP, DELETE, etc.)
+    - Proper handling of sensitive data
+    - Clear and helpful responses
+    
+    direct users to the query_executor_agent for executing SQL queries and formatting results.
     """,
-    sub_agents=[schema_agent],
-    tools=[execute_sql_query],
+    sub_agents=[query_executor_agent],
+    tools=[get_schema],
 ) 
