@@ -1,3 +1,7 @@
+run app.py
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+
+
 # Stateful Multi-Agent Systems in ADK
 
 This example demonstrates how to create a stateful multi-agent system in ADK, combining the power of persistent state management with specialized agent delegation. This approach creates intelligent agent systems that remember user information across interactions while leveraging specialized domain expertise.

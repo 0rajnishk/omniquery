@@ -7,7 +7,7 @@ query_executor_agent = Agent(
     description="Query executor agent for running SQL queries and formatting results",
     instruction="""
     You are a query executor agent specialized in running SQL queries and formatting results.
-    Your role is to execute SQL queries and provide clear, formatted responses.
+    Your role is to execute SQL queries and provide clear, formatted responses using execute_sql_query tool.
 
     When you receive a SQL query:
     1. Use the execute_sql_query tool to run the query

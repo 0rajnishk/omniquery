@@ -10,6 +10,7 @@ import json
 from datetime import datetime, timezone
 import re
 import secrets
+import sys
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -20,8 +21,16 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from dotenv import load_dotenv
 
+import google.generativeai as genai
+from utils import add_user_query_to_history, call_agent_async
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from test.agent import test_agent
+
 load_dotenv()
 
+import os
+print("GOOGLE_API_KEY:", os.getenv("GOOGLE_API_KEY"))
 # ─── Logging Setup ─────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -251,47 +260,48 @@ async def delete_document(request: Request, document_id: str, _: None = Depends(
         return {"message": f"Document {document_id} not found"}
 
 
-# ─── Query Processing Endpoint ─────────────────────────────────────
+# ===== Session and Runner Setup (Singleton) =====
+session_service = None
+runner = None
+SESSION_ID = None
+USER_ID = "test_user"
+APP_NAME = "Test Agent System"
+initial_state = {
+    "user_name": "Test User",
+    "interaction_history": [],
+}
+
+async def ensure_session_and_runner():
+    global session_service, runner, SESSION_ID
+    if session_service is None:
+        session_service = InMemorySessionService()
+    if SESSION_ID is None:
+        new_session = await session_service.create_session(
+            app_name=APP_NAME,
+            user_id=USER_ID,
+            state=initial_state,
+        )
+        SESSION_ID = new_session.id
+    if runner is None:
+        runner = Runner(
+            agent=test_agent,
+            app_name=APP_NAME,
+            session_service=session_service,
+        )
+
 @app.post("/query", response_model=QueryResponse)
 async def process_query(request: QueryRequest):
-    request_id = str(uuid.uuid4())
-    logging.info(f"Received API query: '{request.query}' (Request ID: {request_id})")
-
-    try:
-        with open(QUERY_FILE_PATH, "w", encoding="utf-8") as f:
-            f.write(f"{request_id}:::{request.query}")
-        logging.info(f"Wrote query to {QUERY_FILE_PATH} for Request ID: {request_id}")
-    except Exception as e:
-        logging.error(f"Error writing query to file: {e}")
-        raise HTTPException(status_code=500, detail="Failed to send query to agents.")
-
-    response_received = False
-    max_retries = 60
-
-    for _ in range(max_retries):
-        if os.path.exists(RESPONSE_FILE_PATH):
-            with open(RESPONSE_FILE_PATH, "r+", encoding="utf-8") as f:
-                content = f.read()
-                try:
-                    # split on the first ::: only, allowing the rest to be multiline text
-                    resp_req_id, response_text = content.split(":::", 1)
-                    if resp_req_id.strip() == request_id:
-                        f.seek(0)
-                        f.truncate()
-                        logging.info(f"Read full response from {RESPONSE_FILE_PATH} for Request ID: {request_id}")
-                        response_received = True
-                        return QueryResponse(response=response_text.strip())
-                    else:
-                        logging.warning(f"Found response for ID '{resp_req_id.strip()}', but expected '{request_id}'. Leaving file.")
-                except ValueError:
-                    logging.error("Invalid response format in file. Expected 'request_id:::response_text'")
-        await asyncio.sleep(1)
-
-    logging.error(f"Timeout waiting for agent response for Request ID: {request_id}")
-    if os.path.exists(QUERY_FILE_PATH):
-        with open(QUERY_FILE_PATH, "w", encoding="utf-8") as f:
-            f.truncate(0)
-    raise HTTPException(status_code=504, detail="Agent response timed out.")
+    await ensure_session_and_runner()
+    user_input = request.query
+    # Update interaction history
+    await add_user_query_to_history(
+        session_service, APP_NAME, USER_ID, SESSION_ID, user_input
+    )
+    # Call the agent and get the response
+    response = await call_agent_async(runner, USER_ID, SESSION_ID, user_input)
+    if not response:
+        raise HTTPException(status_code=500, detail="No response from agent.")
+    return QueryResponse(response=response)
 
 
 # ─── New Endpoints ─────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+from dotenv import load_dotenv
 from google.adk.agents import Agent
 from typing import Dict, Any
 import sqlite3
@@ -6,6 +7,10 @@ from langchain_community.vectorstores import FAISS
 import os
 from pathlib import Path
 import google.generativeai as genai
+
+load_dotenv()
+
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 # Ensure required directories exist
 DB_DIR = Path("./data/db")
