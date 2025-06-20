@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Flow</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-in-out',
+                        'slide-up': 'slideUp 0.3s ease-out',
+                        'typing': 'typing 1s infinite',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' }
+                        },
+                        slideUp: {
+                            '0%': { transform: 'translateY(100%)' },
+                            '100%': { transform: 'translateY(0)' }
+                        },
+                        typing: {
+                            '0%, 50%': { opacity: '1' },
+                            '51%, 100%': { opacity: '0' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .glass-effect {
+            backdrop-filter: blur(20px);
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .message-bubble {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3 {
+            margin: 1rem 0 0.5rem 0;
+            font-weight: 600;
+        }
+
+        .markdown-content h1 {
+            font-size: 1.5rem;
+        }
+
+        .markdown-content h2 {
+            font-size: 1.25rem;
+        }
+
+        .markdown-content h3 {
+            font-size: 1.125rem;
+        }
+
+        .markdown-content p {
+            margin: 0.5rem 0;
+        }
+
+        .markdown-content ul,
+        .markdown-content ol {
+            margin: 0.5rem 0;
+            padding-left: 1.5rem;
+        }
+
+        .markdown-content li {
+            margin: 0.25rem 0;
+        }
+
+        .markdown-content code {
+            background: #f3f4f6;
+            padding: 0.125rem 0.25rem;
+            border-radius: 0.25rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+        }
+
+        .markdown-content pre {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .markdown-content pre code {
+            background: transparent;
+            padding: 0;
+            color: inherit;
+        }
+
+        .markdown-content blockquote {
+            border-left: 4px solid #e5e7eb;
+            padding-left: 1rem;
+            margin: 1rem 0;
+            font-style: italic;
+            color: #6b7280;
+        }
+
+        .typing-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #9ca3af;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        .chat-container {
+            height: calc(100vh - 2rem);
+            max-height: 700px;
+        }
+
+        .messages-container {
+            max-height: calc(100% - 120px);
+        }
+    </style>
+</head>
+
+<body class="gradient-bg min-h-screen p-4">
+    <div id="app" class="max-w-4xl mx-auto chat-container">
+        <!-- Header -->
+        <div class="glass-effect rounded-t-2xl p-6 border-b border-white/20">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div
+                        class="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-800">Agent Flow</h1>
+                        <p class="text-sm text-gray-600">AI-Powered Assistant</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <div class="w-3 h-3 rounded-full bg-green-400"></div>
+                    <span class="text-sm text-gray-600">Online</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Messages Container -->
+        <div class="glass-effect messages-container overflow-y-auto p-6 space-y-6">
+            <div v-if="messages.length === 0" class="text-center py-12">
+                <div
+                    class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z">
+                        </path>
+                    </svg>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">Welcome to Agent Flow</h3>
+                <p class="text-gray-600">Start a conversation by typing your message below</p>
+            </div>
+
+            <div v-for="(message, index) in messages" :key="index" class="message-bubble">
+                <!-- User Message -->
+                <div v-if="message.type === 'user'" class="flex justify-end mb-4">
+                    <div class="max-w-3xl">
+                        <div
+                            class="bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-2xl px-4 py-3 shadow-lg">
+                            <p class="whitespace-pre-wrap">{{ message.content }}</p>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1 text-right">{{ message.timestamp }}</p>
+                    </div>
+                </div>
+
+                <!-- Agent Message -->
+                <div v-else class="flex justify-start mb-4">
+                    <div class="flex space-x-3 max-w-3xl">
+                        <div
+                            class="w-8 h-8 rounded-full bg-gradient-to-r from-green-400 to-blue-500 flex items-center justify-center flex-shrink-0 mt-1">
+                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z">
+                                </path>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="bg-white rounded-2xl px-4 py-3 shadow-lg border border-gray-100">
+                                <div v-html="message.content" class="markdown-content text-gray-800"></div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">{{ message.timestamp }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Typing Indicator -->
+            <div v-if="isTyping" class="flex justify-start mb-4">
+                <div class="flex space-x-3 max-w-3xl">
+                    <div
+                        class="w-8 h-8 rounded-full bg-gradient-to-r from-green-400 to-blue-500 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z">
+                            </path>
+                        </svg>
+                    </div>
+                    <div class="bg-white rounded-2xl px-4 py-3 shadow-lg border border-gray-100">
+                        <div class="typing-indicator">
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="glass-effect rounded-b-2xl p-6 border-t border-white/20">
+            <div class="flex space-x-4">
+                <div class="flex-1 relative">
+                    <textarea v-model="query" @keydown.enter.prevent="handleEnter" placeholder="Type your message..."
+                        class="w-full resize-none rounded-xl border border-gray-200 px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 shadow-sm"
+                        rows="1" :disabled="isTyping" ref="textarea"></textarea>
+                    <button @click="sendQuery" :disabled="!query.trim() || isTyping"
+                        class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:from-gray-400 disabled:to-gray-400 text-white rounded-lg p-2 transition-all duration-200 shadow-lg hover:shadow-xl disabled:cursor-not-allowed">
+                        <svg v-if="!isTyping" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                        </svg>
+                        <svg v-else class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                            </path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <p class="text-xs text-gray-500 mt-2 text-center">Press Enter to send, Shift+Enter for new line</p>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    query: '',
+                    messages: [],
+                    isTyping: false,
+                };
+            },
+            methods: {
+                handleEnter(event) {
+                    if (event.shiftKey) {
+                        return; // Allow new line
+                    }
+                    this.sendQuery();
+                },
+
+                formatTimestamp() {
+                    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                },
+
+                parseMarkdown(text) {
+                    // Configure marked options
+                    marked.setOptions({
+                        breaks: true,
+                        gfm: true
+                    });
+                    return marked.parse(text);
+                },
+
+                async sendQuery() {
+                    if (!this.query.trim() || this.isTyping) return;
+
+                    const userMessage = {
+                        type: 'user',
+                        content: this.query,
+                        timestamp: this.formatTimestamp()
+                    };
+
+                    this.messages.push(userMessage);
+                    const currentQuery = this.query;
+                    this.query = '';
+                    this.isTyping = true;
+
+                    // Auto-resize textarea
+                    this.$nextTick(() => {
+                        this.$refs.textarea.style.height = 'auto';
+                    });
+
+                    // Scroll to bottom
+                    this.$nextTick(() => {
+                        this.scrollToBottom();
+                    });
+
+                    try {
+                        const res = await fetch('http://localhost:9000/query', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ query: currentQuery }),
+                        });
+
+                        if (!res.ok) {
+                            throw new Error(`HTTP error! status: ${res.status}`);
+                        }
+
+                        const data = await res.json();
+                        const responseText = data.response || 'No response received.';
+
+                        // Add agent response
+                        this.messages.push({
+                            type: 'agent',
+                            content: this.parseMarkdown(responseText),
+                            timestamp: this.formatTimestamp()
+                        });
+
+                    } catch (error) {
+                        console.error('Error:', error);
+                        this.messages.push({
+                            type: 'agent',
+                            content: `<p class="text-red-600">Error: Unable to connect to the server. Please check if the server is running on localhost:9000.</p>`,
+                            timestamp: this.formatTimestamp()
+                        });
+                    } finally {
+                        this.isTyping = false;
+                        this.$nextTick(() => {
+                            this.scrollToBottom();
+                        });
+                    }
+                },
+
+                scrollToBottom() {
+                    const container = document.querySelector('.messages-container');
+                    if (container) {
+                        container.scrollTop = container.scrollHeight;
+                    }
+                },
+
+                autoResize() {
+                    const textarea = this.$refs.textarea;
+                    if (textarea) {
+                        textarea.style.height = 'auto';
+                        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+                    }
+                }
+            },
+
+            watch: {
+                query() {
+                    this.$nextTick(() => {
+                        this.autoResize();
+                    });
+                }
+            },
+
+            mounted() {
+                // Focus on textarea when component mounts
+                this.$nextTick(() => {
+                    this.$refs.textarea.focus();
+                });
+            }
+        }).mount('#app');
+    </script>
+</body>
+
+</html>
