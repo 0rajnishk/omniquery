@@ -1,2 +1,8 @@
 venv/
 deploy/
+
+video/
+
+
+# ignore alll  pycaches in all directories
+__pycache__/

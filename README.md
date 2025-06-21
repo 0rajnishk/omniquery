@@ -56,7 +56,7 @@ OmniQuery/
 - **FastAPI** - REST API backend
 - **Vue.js** - Frontend interface
 
-## 📋 Data Analysis Examples
+##  Data Analysis Examples
 
 ### Cross-Format Analysis
 ```
