@@ -4,13 +4,16 @@ import uuid
 import logging
 import shutil
 from typing import List
-from fastapi import FastAPI, HTTPException, UploadFile, File, APIRouter, Form, Request, Depends
+from fastapi import FastAPI, HTTPException, UploadFile, File, APIRouter, Form, Request, Depends, StreamingResponse
 from pydantic import BaseModel
 import json
 from datetime import datetime, timezone
 import re
 import secrets
 import sys
+import argparse
+import sqlite3
+import pandas as pd
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -306,31 +309,175 @@ async def process_query(request: QueryRequest):
         raise HTTPException(status_code=500, detail="No response from agent.")
     return QueryResponse(response=response)
 
+@app.post("/query/stream")
+async def process_query_stream(request: QueryRequest):
+    await ensure_session_and_runner()
+    user_input = request.query
+    
+    # Update interaction history
+    await add_user_query_to_history(
+        session_service, APP_NAME, USER_ID, SESSION_ID, user_input
+    )
+    
+    async def generate_stream():
+        try:
+            # Call the agent and get the streaming response
+            async for chunk in call_agent_stream_async(runner, USER_ID, SESSION_ID, user_input):
+                if chunk:
+                    # Send the chunk as a Server-Sent Event
+                    yield f"data: {json.dumps({'chunk': chunk, 'type': 'chunk'})}\n\n"
+            
+            # Send end signal
+            yield f"data: {json.dumps({'type': 'end'})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"Error in streaming response: {e}")
+            yield f"data: {json.dumps({'error': str(e), 'type': 'error'})}\n\n"
+    
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/event-stream",
+        }
+    )
+
+# Helper function for streaming agent responses
+async def call_agent_stream_async(runner, user_id: str, session_id: str, user_input: str):
+    """Stream the agent response asynchronously"""
+    try:
+        # This is a placeholder - you'll need to implement the actual streaming
+        # based on your agent's capabilities
+        response = await call_agent_async(runner, user_id, session_id, user_input)
+        
+        if response:
+            # Simulate streaming by sending the response in chunks
+            words = response.split()
+            for i, word in enumerate(words):
+                yield word + " "
+                # Add a small delay to simulate real streaming
+                await asyncio.sleep(0.05)
+        else:
+            yield "No response available."
+            
+    except Exception as e:
+        logger.error(f"Error in agent streaming: {e}")
+        yield f"Error: {str(e)}"
 
 # ─── New Endpoints ─────────────────────────────────────────────────
-@app.post("/upload-database")
-async def upload_database(request: Request, file: UploadFile = File(...), _: None = Depends(require_admin_token)):
-    # Save the uploaded SQLite file to /tmp/data/db/ with its original filename
-    db_folder = DB_DATA_FOLDER
-    os.makedirs(db_folder, exist_ok=True)
-    db_name = file.filename
-    save_path = os.path.join(db_folder, db_name)
-    # Save the uploaded file
-    with open(save_path, "wb") as f_out:
+def sanitize(name: str) -> str:
+    """
+    Make a string safe for use as a SQL table name:
+      • trim spaces
+      • lower-case
+      • spaces → underscores
+      • drop characters that aren't alphanumeric or "_"
+    """
+    name = name.strip().lower()
+    name = re.sub(r"\s+", "_", name)
+    return re.sub(r"[^\w]", "", name)
+
+def sanitize_column(col: str) -> str:
+    """
+    Sanitize a column name:
+      - Replace spaces with underscores
+      - If there is a capital letter followed by a small letter, insert underscore before capital
+      - Convert to lower-case
+      - Remove non-alphanumeric/underscore
+    """
+    # Replace spaces with underscores
+    col = re.sub(r"\s+", "_", col)
+    # Insert underscore before capital letters that are followed by lowercase (for CamelCase)
+    col = re.sub(r'(?<=[a-z0-9])([A-Z])', r'_\1', col)
+    # Convert to lower-case
+    col = col.lower()
+    # Remove non-alphanumeric/underscore
+    col = re.sub(r"[^\w]", "", col)
+    return col
+
+def excel_to_sqlite(file_path: str, db_path: str) -> str:
+    """Read Excel/CSV file and write an SQLite database.  
+    Returns the path to the database created."""
+    if not os.path.isfile(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    # Create db directory if it doesn't exist
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
+    # Determine file type and process accordingly
+    file_ext = os.path.splitext(file_path)[1].lower()
+    
+    with sqlite3.connect(db_path) as conn:
+        if file_ext in ['.xlsx', '.xls']:
+            # Handle Excel files
+            excel = pd.ExcelFile(file_path)
+            for sheet in excel.sheet_names:
+                df = excel.parse(sheet)
+                table_name = sanitize(sheet)
+
+                # Sanitize column names
+                df.columns = [sanitize_column(col) for col in df.columns]
+
+                # Write DataFrame → SQL table (replace if it already exists)
+                df.to_sql(table_name, conn, if_exists="replace", index=False)
+                logger.info(f"  → Sheet '{sheet}' saved as table '{table_name}'")
+        
+        elif file_ext == '.csv':
+            # Handle CSV files
+            df = pd.read_csv(file_path)
+            table_name = sanitize(os.path.splitext(os.path.basename(file_path))[0])
+            
+            # Sanitize column names
+            df.columns = [sanitize_column(col) for col in df.columns]
+            
+            # Write DataFrame → SQL table (replace if it already exists)
+            df.to_sql(table_name, conn, if_exists="replace", index=False)
+            logger.info(f"  → CSV saved as table '{table_name}'")
+        
+        else:
+            raise ValueError(f"Unsupported file type: {file_ext}")
+
+    logger.info(f"SQLite database created at: {os.path.abspath(db_path)}")
+    return db_path
+
+@app.post("/upload-csv")
+async def upload_csv(request: Request, file: UploadFile = File(...), _: None = Depends(require_admin_token)):
+    # Save the uploaded Excel/CSV file temporarily
+    csv_folder = os.path.join(DB_DATA_FOLDER, "csv")
+    os.makedirs(csv_folder, exist_ok=True)
+    csv_name = file.filename
+    temp_file_path = os.path.join(csv_folder, csv_name)
+    
+    # Save the uploaded file temporarily
+    with open(temp_file_path, "wb") as f_out:
         shutil.copyfileobj(file.file, f_out)
-    logger.info(f"Uploaded SQLite DB saved as {save_path}")
+    logger.info(f"Uploaded file saved temporarily as {temp_file_path}")
 
-    # Remove any other .db files in /tmp/data/db except the newly saved one
-    for fname in os.listdir(db_folder):
-        fpath = os.path.join(db_folder, fname)
-        if fname.endswith(".db") and os.path.abspath(fpath) != os.path.abspath(save_path):
-            try:
-                os.remove(fpath)
-                logger.info(f"Removed old DB file: {fpath}")
-            except Exception as e:
-                logger.error(f"Failed to remove old DB file {fpath}: {e}")
-
-    return {"message": "Database uploaded successfully", "filename": db_name}
+    try:
+        # Convert to SQLite database
+        db_folder = DB_DATA_FOLDER
+        db_path = os.path.join(db_folder, "medical.db")
+        
+        # Convert Excel/CSV to SQLite
+        excel_to_sqlite(temp_file_path, db_path)
+        
+        logger.info(f"Excel/CSV file converted to SQLite database: {db_path}")
+        
+        return {"message": "Excel/CSV file converted to SQLite database successfully", "filename": csv_name, "db_path": db_path}
+        
+    except Exception as e:
+        logger.error(f"Error converting file to SQLite: {e}")
+        raise HTTPException(status_code=500, detail=f"Error converting file to SQLite: {str(e)}")
+    
+    finally:
+        # Clean up temporary file
+        try:
+            os.remove(temp_file_path)
+            logger.info(f"Temporary file removed: {temp_file_path}")
+        except Exception as e:
+            logger.warning(f"Failed to remove temporary file {temp_file_path}: {e}")
 
 @app.post("/update-remote-db")
 async def update_remote_db(request: Request, details: RemoteDbDetails, _: None = Depends(require_admin_token)):

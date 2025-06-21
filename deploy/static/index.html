@@ -345,10 +345,11 @@
                         </form>
                     </div>
                 </div>
-                <!-- Toggle between Documents and Database -->
+                <!-- Toggle between Documents, Excel/CSV and Database -->
                 <div class="flex justify-center mb-8">
-                    <button @click="dbTab = 'documents'" :class="['px-6 py-2 rounded-l-lg font-semibold', dbTab === 'documents' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700']">Documents</button>
-                    <button @click="dbTab = 'database'" :class="['px-6 py-2 rounded-r-lg font-semibold', dbTab === 'database' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700']">Database</button>
+                    <button @click="dbTab = 'documents'" :class="['px-4 py-2 rounded-l-lg font-semibold', dbTab === 'documents' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700']">Documents</button>
+                    <button @click="dbTab = 'excel-csv'" :class="['px-4 py-2 font-semibold border-l border-r border-gray-300', dbTab === 'excel-csv' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700']">Excel/CSV</button>
+                    <button @click="dbTab = 'database'" :class="['px-4 py-2 rounded-r-lg font-semibold', dbTab === 'database' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700']">Database</button>
                 </div>
 
                 <!-- Documents Section -->
@@ -487,37 +488,42 @@
                     </div>
                 </div>
 
-                <!-- Database Section -->
-                <div v-else-if="dbTab === 'database'">
+                <!-- Excel/CSV Section -->
+                <div v-else-if="dbTab === 'excel-csv'">
                     <div class="mb-8">
-                        <h2 class="text-xl font-semibold text-gray-800 mb-4">Upload SQLite Database</h2>
+                        <h2 class="text-xl font-semibold text-gray-800 mb-4">Convert Excel/CSV to  Database</h2>
                         <div class="upload-area rounded-xl p-8 text-center mb-6">
                             <svg class="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
                             </svg>
-                            <p class="text-lg font-medium text-gray-700 mb-2">Drop SQLite .db file here or click to browse</p>
-                            <input type="file" ref="sqliteFile" @change="handleSqliteSelect" class="hidden" accept=".db" />
-                            <button @click="$refs.sqliteFile.click()" class="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-2 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl mt-2">Choose SQLite File</button>
-                            <div v-if="selectedSqliteFile" class="mt-4 flex flex-col items-center">
-                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs bg-blue-100 text-blue-800">{{ selectedSqliteFile.name }}
-                                    <button @click="removeSqliteFile" class="ml-2 hover:text-blue-600">
+                            <p class="text-lg font-medium text-gray-700 mb-2">Drop Excel or CSV files here to convert to  database</p>
+                            <p class="text-sm text-gray-500 mb-4">Support for .xlsx, .xls, and .csv files. Files will be converted to db</p>
+                            <input type="file" ref="csvFile" @change="handleCsvSelect" class="hidden" accept=".xlsx,.xls,.csv" />
+                            <button @click="$refs.csvFile.click()" class="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-2 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl mt-2">Choose Excel/CSV File</button>
+                            <div v-if="selectedCsvFile" class="mt-4 flex flex-col items-center">
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs bg-blue-100 text-blue-800">{{ selectedCsvFile.name }}
+                                    <button @click="removeCsvFile" class="ml-2 hover:text-blue-600">
                                         <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                                             <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
                                         </svg>
                                     </button>
                                 </span>
-                                <button @click="uploadSqliteFile" :disabled="uploadingSqlite" class="mt-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-6 py-2 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl disabled:cursor-not-allowed">
-                                    <svg v-if="!uploadingSqlite" class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <button @click="uploadCsvFile" :disabled="uploadingCsv" class="mt-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-6 py-2 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl disabled:cursor-not-allowed">
+                                    <svg v-if="!uploadingCsv" class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 12l2 2 4-4"></path>
                                     </svg>
                                     <svg v-else class="w-4 h-4 inline mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                                     </svg>
-                                    {{ uploadingSqlite ? 'Uploading...' : 'Upload SQLite Database' }}
+                                    {{ uploadingCsv ? 'Converting...' : 'Convert to SQLite Database' }}
                                 </button>
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <!-- Database Section -->
+                <div v-else-if="dbTab === 'database'">
                     <div class="mb-8">
                         <h2 class="text-xl font-semibold text-gray-800 mb-4">Connect to Remote Database</h2>
                         <div class="text-center">
@@ -622,8 +628,8 @@
                     loading: false,
                     dragOver: false,
                     // Database tab state
-                    selectedSqliteFile: null,
-                    uploadingSqlite: false,
+                    selectedCsvFile: null,
+                    uploadingCsv: false,
                     remoteDb: {
                         type: 'mysql',
                         host: '',
@@ -688,34 +694,66 @@
                         this.scrollToBottom();
                     });
 
+                    // Add a placeholder message for the streaming response
+                    const agentMessageIndex = this.messages.length;
+                    this.messages.push({
+                        type: 'agent',
+                        content: '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>',
+                        timestamp: this.formatTimestamp()
+                    });
+
                     try {
-                        const res = await fetch(`${getApiBaseUrl()}/query`, {
+                        const response = await fetch(`${getApiBaseUrl()}/query/stream`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ query: currentQuery }),
                         });
 
-                        if (!res.ok) {
-                            throw new Error(`HTTP error! status: ${res.status}`);
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
                         }
 
-                        const data = await res.json();
-                        const responseText = data.response || 'No response received.';
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
+                        let accumulatedContent = '';
 
-                        // Add agent response
-                        this.messages.push({
-                            type: 'agent',
-                            content: this.parseMarkdown(responseText),
-                            timestamp: this.formatTimestamp()
-                        });
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            
+                            if (done) break;
+                            
+                            const chunk = decoder.decode(value);
+                            const lines = chunk.split('\n');
+                            
+                            for (const line of lines) {
+                                if (line.startsWith('data: ')) {
+                                    try {
+                                        const data = JSON.parse(line.slice(6));
+                                        
+                                        if (data.type === 'chunk') {
+                                            accumulatedContent += data.chunk;
+                                            // Update the message content with accumulated text
+                                            this.messages[agentMessageIndex].content = this.parseMarkdown(accumulatedContent);
+                                            this.$nextTick(() => {
+                                                this.scrollToBottom();
+                                            });
+                                        } else if (data.type === 'end') {
+                                            // Streaming completed
+                                            break;
+                                        } else if (data.type === 'error') {
+                                            this.messages[agentMessageIndex].content = `<p class="text-red-600">❌ Error: ${data.error}</p>`;
+                                            break;
+                                        }
+                                    } catch (e) {
+                                        console.error('Error parsing SSE data:', e);
+                                    }
+                                }
+                            }
+                        }
 
                     } catch (error) {
                         console.error('Error:', error);
-                        this.messages.push({
-                            type: 'agent',
-                            content: `<p class="text-red-600">❌ Error: Unable to connect to the server. Please check if the server is running on localhost:9000.</p>`,
-                            timestamp: this.formatTimestamp()
-                        });
+                        this.messages[agentMessageIndex].content = `<p class="text-red-600">❌ Error: Unable to connect to the server. Please check if the server is running on localhost:9000.</p>`;
                     } finally {
                         this.isTyping = false;
                         this.$nextTick(() => {
@@ -841,25 +879,25 @@
                     }
                 },
 
-                handleSqliteSelect(event) {
-                    this.selectedSqliteFile = event.target.files[0];
+                handleCsvSelect(event) {
+                    this.selectedCsvFile = event.target.files[0];
                 },
-                removeSqliteFile() {
-                    this.selectedSqliteFile = null;
-                    this.$refs.sqliteFile.value = '';
+                removeCsvFile() {
+                    this.selectedCsvFile = null;
+                    this.$refs.csvFile.value = '';
                 },
-                async uploadSqliteFile() {
-                    if (!this.selectedSqliteFile) return;
+                async uploadCsvFile() {
+                    if (!this.selectedCsvFile) return;
                     const token = this.getToken();
                     if (!token) {
                         alert('Please login first.');
                         return;
                     }
-                    this.uploadingSqlite = true;
+                    this.uploadingCsv = true;
                     try {
                         const formData = new FormData();
-                        formData.append('file', this.selectedSqliteFile);
-                        const res = await fetch(`${getApiBaseUrl()}/upload-database?token=${token}`, {
+                        formData.append('file', this.selectedCsvFile);
+                        const res = await fetch(`${getApiBaseUrl()}/upload-csv?token=${token}`, {
                             method: 'POST',
                             body: formData,
                         });
@@ -869,17 +907,17 @@
                             return;
                         }
                         if (res.ok) {
-                            this.selectedSqliteFile = null;
-                            this.$refs.sqliteFile.value = '';
-                            alert('Database uploaded successfully!');
+                            this.selectedCsvFile = null;
+                            this.$refs.csvFile.value = '';
+                            alert('Excel/CSV file converted to SQLite database successfully!');
                         } else {
                             throw new Error('Upload failed');
                         }
                     } catch (error) {
-                        console.error('Error uploading database:', error);
-                        alert('Error uploading database. Please try again.');
+                        console.error('Error uploading CSV file:', error);
+                        alert('Error converting Excel/CSV file to SQLite database. Please try again.');
                     } finally {
-                        this.uploadingSqlite = false;
+                        this.uploadingCsv = false;
                     }
                 },
                 async submitRemoteDb() {

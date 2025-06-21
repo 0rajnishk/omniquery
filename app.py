@@ -1,57 +1,62 @@
-import asyncio
 import os
-import uuid
-import logging
-import shutil
-from typing import List
-from fastapi import FastAPI, HTTPException, UploadFile, File, APIRouter, Form, Request, Depends
-from pydantic import BaseModel
-import json
-from datetime import datetime, timezone
 import re
+import shutil
 import secrets
 import sys
+import argparse
+import sqlite3
+import pandas as pd
+import asyncio
+import logging
+from datetime import datetime, timezone
+import uuid
+from typing import List
+
+from fastapi import FastAPI, File, UploadFile, Form, Depends, HTTPException, Request, StreamingResponse, APIRouter
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import json
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from dotenv import load_dotenv
+from langchain_community.document_loaders import PyPDFLoader
+from uagents import Agent, Context, Protocol
+from uagents.setup import fund_agent_if_low
+from uagents.storage import InMemorySessionService
+from uagents.runner import Runner
 
-import google.generativeai as genai
-from utils import add_user_query_to_history, call_agent_async
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
-from test.agent import test_agent
-
-load_dotenv()
-
-import os
-print("GOOGLE_API_KEY:", os.getenv("GOOGLE_API_KEY"))
-# ─── Logging Setup ─────────────────────────────────────────────────
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ─── FastAPI Setup ─────────────────────────────────────────────────
-app = FastAPI(title="Agent Flow Query API", version="1.0.0")
-router = APIRouter(prefix="/document", tags=["documents"])
+# Constants
+DB_FOLDER = "vectorstores"
+DATA_FOLDER = "data"
+QUERY_FILE_PATH = "query.txt"
+RESPONSE_FILE_PATH = "response.txt"
 
+# Create necessary directories
+os.makedirs(DB_FOLDER, exist_ok=True)
+os.makedirs(DATA_FOLDER, exist_ok=True)
 
-# Mount static files (if you have JS, CSS, etc. later)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Initialize FastAPI app
+app = FastAPI(title="OmniQuery API", version="1.0.0")
 
-
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change this to the frontend domain in production
+    allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ─── Data Models ───────────────────────────────────────────────────
+# Initialize router
+router = APIRouter(prefix="/document", tags=["documents"])
+
+# Pydantic models
 class QueryRequest(BaseModel):
     query: str
 
@@ -66,92 +71,71 @@ class RemoteDbDetails(BaseModel):
     username: str
     password: str
 
-# ─── File Paths ────────────────────────────────────────────────────
-QUERY_FILE_PATH = "query_to_agents.txt"
-RESPONSE_FILE_PATH = "response_from_agents.txt"
-DB_FOLDER = "vectorstores"
-DATA_FOLDER = os.path.abspath(os.path.join(os.path.dirname(__file__), './data'))
-os.makedirs(DB_FOLDER, exist_ok=True)
-os.makedirs(DATA_FOLDER, exist_ok=True)
-
-# ─── Google Gemini Embeddings ──────────────────────────────────────
-
-
-GENAI_API_KEY = os.getenv("GOOGLE_API_KEY")
-if not GENAI_API_KEY:
-    raise ValueError("GOOGLE_API_KEY environment variable not set. Please set it to your Google API key.")
-
-embeddings = GoogleGenerativeAIEmbeddings(
-    model="models/embedding-001", google_api_key=GENAI_API_KEY
-)
-
-# ─── PDF Processor ─────────────────────────────────────────────────
+# PDF Processing function
 def process_pdf(pdf_path: str, pdf_id: str):
-    logger.info(f"Starting PDF processing for: {pdf_path} with id: {pdf_id}")
-    loader = PyPDFLoader(pdf_path)
-    documents = loader.load()
-    logger.info(f"Loaded {len(documents)} documents from PDF.")
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    chunks = splitter.split_documents(documents)
-    logger.info(f"Split documents into {len(chunks)} chunks.")
-    vectorstore = FAISS.from_documents(chunks, embeddings)
-    vectorstore.save_local(os.path.join(DB_FOLDER, pdf_id))
-    logger.info(f"Vectorstore saved locally with id: {pdf_id}")
-    return {"success": True, "message": "PDF processed successfully"}
+    """Process PDF and create vector store"""
+    try:
+        loader = PyPDFLoader(pdf_path)
+        pages = loader.load()
+        
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200,
+            length_function=len,
+        )
+        
+        splits = text_splitter.split_documents(pages)
+        
+        embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/embedding-001",
+            google_api_key=os.getenv("GOOGLE_API_KEY")
+        )
+        
+        vectorstore = FAISS.from_documents(splits, embeddings)
+        
+        # Save vectorstore
+        store_path = os.path.join(DB_FOLDER, f"{os.path.splitext(os.path.basename(pdf_path))[0]}---{pdf_id}")
+        vectorstore.save_local(store_path)
+        
+        logger.info(f"Vector store saved to {store_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error processing PDF {pdf_path}: {e}")
+        return False
 
-# ─── In-Memory Document Manager ────────────────────────────────────
+# Document Manager
 class DocManager:
     def __init__(self):
-        self.docs = {}  # doc_id: {filename, path}
+        self.docs = {}
         self.load_from_vectorstores()
 
     def load_from_vectorstores(self):
         # Scan the vectorstores folder for directories/files named as 'originalname---id'
-        if not os.path.exists(DB_FOLDER):
-            return
         for entry in os.listdir(DB_FOLDER):
-            # Only consider directories (vectorstore format)
-            entry_path = os.path.join(DB_FOLDER, entry)
-            if os.path.isdir(entry_path):
-                # Match pattern: originalname---id
-                match = re.match(r"(.+)---([a-fA-F0-9\-]+)$", entry)
-                if match:
-                    original_name, doc_id = match.groups()
-                    # Try to find the original file in data/db or data
-                    possible_file = os.path.join(os.path.dirname(__file__), "data", f"{doc_id}_{original_name}")
-                    if not os.path.exists(possible_file):
-                        # fallback: just use the name
-                        possible_file = original_name
-                    self.docs[doc_id] = {"filename": original_name, "path": possible_file}
+            match = re.match(r"(.+)---([a-fA-F0-9\-]+)$", entry)
+            if match:
+                original_name, doc_id = match.groups()
+                self.docs[doc_id] = {"filename": original_name + ".pdf"}
 
     def upload_document(self, files: List[UploadFile]):
-        for f in files:
-            doc_id = str(uuid.uuid4())
-            # Save with id in filename for traceability
-            save_path = os.path.join(DB_FOLDER, f"{f.filename}---{doc_id}")
-            # Save the uploaded file in data folder for reference
-            data_file_path = os.path.join(os.path.dirname(__file__), "data", f"{doc_id}_{f.filename}")
-            with open(data_file_path, "wb") as dest:
-                shutil.copyfileobj(f.file, dest)
-            # Process and save vectorstore with the new naming
-            process_pdf(data_file_path, f"{f.filename}---{doc_id}")
-            self.docs[doc_id] = {"filename": f.filename, "path": data_file_path}
+        for file in files:
+            if file.filename.endswith('.pdf'):
+                # Generate unique ID
+                doc_id = str(uuid.uuid4())
+                # Save file
+                file_path = os.path.join(DATA_FOLDER, f"{doc_id}_{file.filename}")
+                with open(file_path, "wb") as f:
+                    shutil.copyfileobj(file.file, f)
+                # Process PDF
+                if process_pdf(file_path, doc_id):
+                    self.docs[doc_id] = {"filename": file.filename}
+                    logger.info(f"Document uploaded successfully: {file.filename}")
 
     def get_document(self, doc_id: str):
         # Try in memory first
         if doc_id in self.docs:
             return self.docs[doc_id]
-        # Try to find in vectorstores
-        for entry in os.listdir(DB_FOLDER):
-            match = re.match(r"(.+)---([a-fA-F0-9\-]+)$", entry)
-            if match:
-                original_name, found_id = match.groups()
-                if found_id == doc_id:
-                    possible_file = os.path.join(os.path.dirname(__file__), "data", f"{doc_id}_{original_name}")
-                    if not os.path.exists(possible_file):
-                        possible_file = original_name
-                    self.docs[doc_id] = {"filename": original_name, "path": possible_file}
-                    return self.docs[doc_id]
         return None
 
     def get_all_documents(self):
@@ -179,22 +163,14 @@ class DocManager:
 
 doc = DocManager()
 
-
-
 # ─── Index Route ───────────────────────────────────────────────────
 @app.get("/")
 def get_index():
     return FileResponse("static/index.html")
-# ─── Index Route ───────────────────────────────────────────────────
+
 @app.get("/info")
 def get_index():
     return FileResponse("static/info.html")
-
-# # ─── Admin Route ───────────────────────────────────────────────────
-# @app.get("/admin")
-# def get_admin():
-#     return FileResponse("static/admin.html")
-
 
 # ─── Simple Admin Auth ─────────────────────────────────────────────
 ADMIN_ID = "admin"
@@ -219,7 +195,6 @@ def login(admin_id: str = Form(...), password: str = Form(...)):
         return {"token": current_token}
     else:
         raise HTTPException(status_code=401, detail="Invalid credentials.")
-
 
 # ─── Document Endpoints ────────────────────────────────────────────
 @router.post("/")
@@ -259,7 +234,6 @@ async def delete_document(request: Request, document_id: str, _: None = Depends(
         logger.warning(f"Document with ID '{document_id}' not found.")
         return {"message": f"Document {document_id} not found"}
 
-
 # ===== Session and Runner Setup (Singleton) =====
 session_service = None
 runner = None
@@ -289,6 +263,39 @@ async def ensure_session_and_runner():
             session_service=session_service,
         )
 
+# Placeholder functions for agent interaction
+async def add_user_query_to_history(session_service, app_name, user_id, session_id, user_input):
+    # Placeholder implementation
+    pass
+
+async def call_agent_async(runner, user_id, session_id, user_input):
+    # Placeholder implementation - replace with actual agent call
+    return f"This is a placeholder response to: {user_input}"
+
+async def call_agent_stream_async(runner, user_id, session_id, user_input):
+    """Stream the agent response asynchronously"""
+    try:
+        # This is a placeholder - you'll need to implement the actual streaming
+        # based on your agent's capabilities
+        response = await call_agent_async(runner, user_id, session_id, user_input)
+        
+        if response:
+            # Simulate streaming by sending the response in chunks
+            words = response.split()
+            for i, word in enumerate(words):
+                yield word + " "
+                # Add a small delay to simulate real streaming
+                await asyncio.sleep(0.05)
+        else:
+            yield "No response available."
+            
+    except Exception as e:
+        logger.error(f"Error in agent streaming: {e}")
+        yield f"Error: {str(e)}"
+
+# Placeholder agent
+test_agent = Agent(name="test_agent")
+
 @app.post("/query", response_model=QueryResponse)
 async def process_query(request: QueryRequest):
     await ensure_session_and_runner()
@@ -303,31 +310,153 @@ async def process_query(request: QueryRequest):
         raise HTTPException(status_code=500, detail="No response from agent.")
     return QueryResponse(response=response)
 
+@app.post("/query/stream")
+async def process_query_stream(request: QueryRequest):
+    await ensure_session_and_runner()
+    user_input = request.query
+    
+    # Update interaction history
+    await add_user_query_to_history(
+        session_service, APP_NAME, USER_ID, SESSION_ID, user_input
+    )
+    
+    async def generate_stream():
+        try:
+            # Call the agent and get the streaming response
+            async for chunk in call_agent_stream_async(runner, USER_ID, SESSION_ID, user_input):
+                if chunk:
+                    # Send the chunk as a Server-Sent Event
+                    yield f"data: {json.dumps({'chunk': chunk, 'type': 'chunk'})}\n\n"
+            
+            # Send end signal
+            yield f"data: {json.dumps({'type': 'end'})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"Error in streaming response: {e}")
+            yield f"data: {json.dumps({'error': str(e), 'type': 'error'})}\n\n"
+    
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/event-stream",
+        }
+    )
 
 # ─── New Endpoints ─────────────────────────────────────────────────
-@app.post("/upload-database")
-async def upload_database(request: Request, file: UploadFile = File(...), _: None = Depends(require_admin_token)):
-    # Save the uploaded SQLite file to ./data/db/ with its original filename
-    db_folder = os.path.join(os.path.dirname(__file__), "data", "db")
-    os.makedirs(db_folder, exist_ok=True)
-    db_name = file.filename
-    save_path = os.path.join(db_folder, db_name)
-    # Save the uploaded file
-    with open(save_path, "wb") as f_out:
+def sanitize(name: str) -> str:
+    """
+    Make a string safe for use as a SQL table name:
+      • trim spaces
+      • lower-case
+      • spaces → underscores
+      • drop characters that aren't alphanumeric or "_"
+    """
+    name = name.strip().lower()
+    name = re.sub(r"\s+", "_", name)
+    return re.sub(r"[^\w]", "", name)
+
+def sanitize_column(col: str) -> str:
+    """
+    Sanitize a column name:
+      - Replace spaces with underscores
+      - If there is a capital letter followed by a small letter, insert underscore before capital
+      - Convert to lower-case
+      - Remove non-alphanumeric/underscore
+    """
+    # Replace spaces with underscores
+    col = re.sub(r"\s+", "_", col)
+    # Insert underscore before capital letters that are followed by lowercase (for CamelCase)
+    col = re.sub(r'(?<=[a-z0-9])([A-Z])', r'_\1', col)
+    # Convert to lower-case
+    col = col.lower()
+    # Remove non-alphanumeric/underscore
+    col = re.sub(r"[^\w]", "", col)
+    return col
+
+def excel_to_sqlite(file_path: str, db_path: str) -> str:
+    """Read Excel/CSV file and write an SQLite database.  
+    Returns the path to the database created."""
+    if not os.path.isfile(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    # Create db directory if it doesn't exist
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
+    # Determine file type and process accordingly
+    file_ext = os.path.splitext(file_path)[1].lower()
+    
+    with sqlite3.connect(db_path) as conn:
+        if file_ext in ['.xlsx', '.xls']:
+            # Handle Excel files
+            excel = pd.ExcelFile(file_path)
+            for sheet in excel.sheet_names:
+                df = excel.parse(sheet)
+                table_name = sanitize(sheet)
+
+                # Sanitize column names
+                df.columns = [sanitize_column(col) for col in df.columns]
+
+                # Write DataFrame → SQL table (replace if it already exists)
+                df.to_sql(table_name, conn, if_exists="replace", index=False)
+                logger.info(f"  → Sheet '{sheet}' saved as table '{table_name}'")
+        
+        elif file_ext == '.csv':
+            # Handle CSV files
+            df = pd.read_csv(file_path)
+            table_name = sanitize(os.path.splitext(os.path.basename(file_path))[0])
+            
+            # Sanitize column names
+            df.columns = [sanitize_column(col) for col in df.columns]
+            
+            # Write DataFrame → SQL table (replace if it already exists)
+            df.to_sql(table_name, conn, if_exists="replace", index=False)
+            logger.info(f"  → CSV saved as table '{table_name}'")
+        
+        else:
+            raise ValueError(f"Unsupported file type: {file_ext}")
+
+    logger.info(f"SQLite database created at: {os.path.abspath(db_path)}")
+    return db_path
+
+@app.post("/upload-csv")
+async def upload_csv(request: Request, file: UploadFile = File(...), _: None = Depends(require_admin_token)):
+    # Save the uploaded Excel/CSV file temporarily
+    csv_folder = os.path.join(os.path.dirname(__file__), "data", "csv")
+    os.makedirs(csv_folder, exist_ok=True)
+    csv_name = file.filename
+    temp_file_path = os.path.join(csv_folder, csv_name)
+    
+    # Save the uploaded file temporarily
+    with open(temp_file_path, "wb") as f_out:
         shutil.copyfileobj(file.file, f_out)
-    logger.info(f"Uploaded SQLite DB saved as {save_path}")
+    logger.info(f"Uploaded file saved temporarily as {temp_file_path}")
 
-    # Remove any other .db files in ./data/db except the newly saved one
-    for fname in os.listdir(db_folder):
-        fpath = os.path.join(db_folder, fname)
-        if fname.endswith(".db") and os.path.abspath(fpath) != os.path.abspath(save_path):
-            try:
-                os.remove(fpath)
-                logger.info(f"Removed old DB file: {fpath}")
-            except Exception as e:
-                logger.error(f"Failed to remove old DB file {fpath}: {e}")
-
-    return {"message": "Database uploaded successfully", "filename": db_name}
+    try:
+        # Convert to SQLite database
+        db_folder = os.path.join(os.path.dirname(__file__), "data", "db")
+        db_path = os.path.join(db_folder, "medical.db")
+        
+        # Convert Excel/CSV to SQLite
+        excel_to_sqlite(temp_file_path, db_path)
+        
+        logger.info(f"Excel/CSV file converted to SQLite database: {db_path}")
+        
+        return {"message": "Excel/CSV file converted to SQLite database successfully", "filename": csv_name, "db_path": db_path}
+        
+    except Exception as e:
+        logger.error(f"Error converting file to SQLite: {e}")
+        raise HTTPException(status_code=500, detail=f"Error converting file to SQLite: {str(e)}")
+    
+    finally:
+        # Clean up temporary file
+        try:
+            os.remove(temp_file_path)
+            logger.info(f"Temporary file removed: {temp_file_path}")
+        except Exception as e:
+            logger.warning(f"Failed to remove temporary file {temp_file_path}: {e}")
 
 @app.post("/update-remote-db")
 async def update_remote_db(request: Request, details: RemoteDbDetails, _: None = Depends(require_admin_token)):
@@ -339,7 +468,6 @@ async def update_remote_db(request: Request, details: RemoteDbDetails, _: None =
         json.dump(details.model_dump(), f, indent=2)
     logger.info(f"Remote DB details saved as {save_path}")
     return {"message": "Remote DB details saved successfully", "filename": unique_name}
-
 
 # ─── Mount Document Router ─────────────────────────────────────────
 app.include_router(router)
@@ -353,4 +481,4 @@ if __name__ == "__main__":
         os.remove(RESPONSE_FILE_PATH)
 
     logging.info("Starting FastAPI application (separate process)...")
-    uvicorn.run(app, host="0.0.0.0", port=9000)
+    uvicorn.run(app, host="0.0.0.0", port=9000) 
