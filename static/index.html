@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OmniQuery - Admin Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-in-out',
+                        'slide-up': 'slideUp 0.3s ease-out',
+                        'typing': 'typing 1s infinite',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' }
+                        },
+                        slideUp: {
+                            '0%': { transform: 'translateY(100%)' },
+                            '100%': { transform: 'translateY(0)' }
+                        },
+                        typing: {
+                            '0%, 50%': { opacity: '1' },
+                            '51%, 100%': { opacity: '0' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .glass-effect {
+            backdrop-filter: blur(20px);
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .message-bubble {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3 {
+            margin: 1rem 0 0.5rem 0;
+            font-weight: 600;
+        }
+
+        .markdown-content h1 {
+            font-size: 1.5rem;
+        }
+
+        .markdown-content h2 {
+            font-size: 1.25rem;
+        }
+
+        .markdown-content h3 {
+            font-size: 1.125rem;
+        }
+
+        .markdown-content p {
+            margin: 0.5rem 0;
+        }
+
+        .markdown-content ul,
+        .markdown-content ol {
+            margin: 0.5rem 0;
+            padding-left: 1.5rem;
+        }
+
+        .markdown-content li {
+            margin: 0.25rem 0;
+        }
+
+        .markdown-content code {
+            background: #f3f4f6;
+            padding: 0.125rem 0.25rem;
+            border-radius: 0.25rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+        }
+
+        .markdown-content pre {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .markdown-content pre code {
+            background: transparent;
+            padding: 0;
+            color: inherit;
+        }
+
+        .markdown-content blockquote {
+            border-left: 4px solid #e5e7eb;
+            padding-left: 1rem;
+            margin: 1rem 0;
+            font-style: italic;
+            color: #6b7280;
+        }
+
+        .typing-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #9ca3af;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        .chat-container {
+            height: calc(100vh - 2rem);
+            max-height: 800px;
+        }
+
+        .messages-container {
+            max-height: calc(100% - 142px);
+        }
+
+        .document-card {
+            transition: all 0.3s ease;
+        }
+
+        .document-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .upload-area {
+            transition: all 0.3s ease;
+            border: 2px dashed #d1d5db;
+        }
+
+        .upload-area:hover,
+        .upload-area.drag-over {
+            border-color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.05);
+        }
+
+        .fade-enter-active,
+        .fade-leave-active {
+            transition: opacity 0.3s;
+        }
+
+        .fade-enter-from,
+        .fade-leave-to {
+            opacity: 0;
+        }
+    </style>
+</head>
+
+<body class="gradient-bg min-h-screen p-4">
+    <div id="app" class="max-w-6xl mx-auto chat-container">
+        <!-- Navigation -->
+        <div class="glass-effect rounded-t-2xl p-6 border-b border-white/20">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center space-x-3">
+                    <div
+                        class="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-800">OmniQuery</h1>
+                        <p class="text-sm text-gray-600">AI-Powered Assistant</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-2">
+                        <a href="/docs" class="text-sm text-gray-600 hover:text-gray-900">
+                            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                                </path>
+                            </svg>
+                            Docs
+                        </a>
+                        <a href="/info" class="text-sm text-gray-600 hover:text-gray-900">
+                            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="10" stroke="#a78bfa" stroke-width="2" fill="none"/>
+                                <line x1="12" y1="10" x2="12" y2="16" stroke="#a78bfa" stroke-width="2" stroke-linecap="round"/>
+                                <circle cx="12" cy="7" r="1" fill="#a78bfa"/>
+                            </svg>
+                            Info
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="flex space-x-1 bg-gray-100 rounded-lg p-1">
+                <button @click="activeTab = 'chat'"
+                    :class="['flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all duration-200', 
+                             activeTab === 'chat' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900']">
+                    <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z">
+                        </path>
+                    </svg>
+                    Chat
+                </button>
+                <button @click="activeTab = 'documents'"
+                    :class="['flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all duration-200', 
+                             activeTab === 'documents' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900']">
+                    <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                        </path>
+                    </svg>
+                    Documents
+                </button>
+            </div>
+        </div>
+
+        <!-- Chat Tab -->
+        <div v-show="activeTab === 'chat'" class="glass-effect messages-container overflow-y-auto p-6 space-y-6">
+            <div v-if="messages.length === 0" class="text-center py-12">
+                <div
+                    class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z">
+                        </path>
+                    </svg>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">Welcome to OmniQuery</h3>
+                <p class="text-gray-600">Start a conversation by typing your message below</p>
+            </div>
+
+            <div v-for="(message, index) in messages" :key="index" class="message-bubble">
+                <!-- User Message -->
+                <div v-if="message.type === 'user'" class="flex justify-end mb-4">
+                    <div class="max-w-3xl">
+                        <div
+                            class="bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-2xl px-4 py-3 shadow-lg">
+                            <p class="whitespace-pre-wrap">{{ message.content }}</p>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1 text-right">{{ message.timestamp }}</p>
+                    </div>
+                </div>
+
+                <!-- Agent Message -->
+                <div v-else class="flex justify-start mb-4">
+                    <div class="flex space-x-3 max-w-3xl">
+                        <div
+                            class="w-8 h-8 rounded-full bg-gradient-to-r from-green-400 to-blue-500 flex items-center justify-center flex-shrink-0 mt-1">
+                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z">
+                                </path>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="bg-white rounded-2xl px-4 py-3 shadow-lg border border-gray-100">
+                                <div v-html="message.content" class="markdown-content text-gray-800"></div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">{{ message.timestamp }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Typing Indicator -->
+            <div v-if="isTyping" class="flex justify-start mb-4">
+                <div class="flex space-x-3 max-w-3xl">
+                    <div
+                        class="w-8 h-8 rounded-full bg-gradient-to-r from-green-400 to-blue-500 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z">
+                            </path>
+                        </svg>
+                    </div>
+                    <div class="bg-white rounded-2xl px-4 py-3 shadow-lg border border-gray-100">
+                        <div class="typing-indicator">
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        
+        <!-- Documents Tab -->
+        <div v-show="activeTab === 'documents'" class="glass-effect messages-container overflow-y-auto p-6">
+            <div class="max-w-4xl mx-auto">
+                <!-- Login/Logout Button -->
+                <div class="flex justify-end mb-4">
+                    <button v-if="!isLoggedIn" @click="showLogin = true" class="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-lg shadow hover:from-purple-600 hover:to-pink-600 transition-all">Login</button>
+                    <div v-else class="flex items-center space-x-2">
+                        <span class="text-sm text-gray-700">Logged in as <b>admin</b></span>
+                        <button @click="logout" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded-lg transition-all">Logout</button>
+                    </div>
+                </div>
+                <!-- Login Modal -->
+                <div v-if="showLogin" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+                    <div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-sm relative animate-fade-in">
+                        <button @click="showLogin = false" class="absolute top-2 right-2 text-gray-400 hover:text-gray-700">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+                        <h2 class="text-xl font-bold mb-4 text-center text-purple-700">Admin Login</h2>
+                        <form @submit.prevent="login">
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-1">Admin ID</label>
+                                <input v-model="loginId" type="text" class="w-full border rounded-lg px-3 py-2" required autofocus />
+                            </div>
+                            <div class="mb-6">
+                                <label class="block text-gray-700 mb-1">Password</label>
+                                <input v-model="loginPassword" type="password" class="w-full border rounded-lg px-3 py-2" required />
+                            </div>
+                            <button type="submit" :disabled="loggingIn" class="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-2 rounded-lg font-semibold shadow hover:from-purple-600 hover:to-pink-600 transition-all">{{ loggingIn ? 'Logging in...' : 'Login' }}</button>
+                            <div v-if="loginError" class="text-red-600 text-sm mt-3 text-center">{{ loginError }}</div>
+                        </form>
+                    </div>
+                </div>
+                <!-- Toggle between Documents, Excel/CSV and Database -->
+                <div class="flex justify-center mb-8">
+                    <button @click="dbTab = 'documents'" :class="['px-4 py-2 rounded-l-lg font-semibold', dbTab === 'documents' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700']">Documents</button>
+                    <button @click="dbTab = 'excel-csv'" :class="['px-4 py-2 font-semibold border-l border-r border-gray-300', dbTab === 'excel-csv' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700']">Excel/CSV</button>
+                    <button @click="dbTab = 'database'" :class="['px-4 py-2 rounded-r-lg font-semibold', dbTab === 'database' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700']">Database</button>
+                </div>
+
+                <!-- Documents Section -->
+                <div v-if="dbTab === 'documents'">
+                    <!-- Upload Section -->
+                    <div class="mb-8">
+                        <h2 class="text-xl font-semibold text-gray-800 mb-4">Upload Documents</h2>
+                        <div @drop="handleDrop" @dragover.prevent @dragenter.prevent @dragleave="handleDragLeave"
+                            :class="['upload-area rounded-xl p-8 text-center', dragOver ? 'drag-over' : '']">
+                            <svg class="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12">
+                                </path>
+                            </svg>
+                            <p class="text-lg font-medium text-gray-700 mb-2">Drop files here or click to browse</p>
+                            <p class="text-sm text-gray-500 mb-4">Support for PDF, TXT, and DOC files</p>
+
+                            <input type="file" multiple ref="files" @change="handleFileSelect" class="hidden"
+                                accept=".pdf,.txt,.doc,.docx" />
+
+                            <div class="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                                <button @click="$refs.files.click()"
+                                    class="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-2 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl">
+                                    <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                                    </svg>
+                                    Choose Files
+                                </button>
+
+                                <button v-if="selectedFiles.length > 0" @click="uploadFiles" :disabled="uploading"
+                                    class="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 text-white px-6 py-2 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl disabled:cursor-not-allowed">
+                                    <svg v-if="!uploading" class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 12l2 2 4-4">
+                                        </path>
+                                    </svg>
+                                    <svg v-else class="w-4 h-4 inline mr-2 animate-spin" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                                        </path>
+                                    </svg>
+                                    {{ uploading ? 'Uploading...' : `Upload ${selectedFiles.length}
+                                    file${selectedFiles.length > 1 ? 's' : ''}` }}
+                                </button>
+                            </div>
+
+                            <!-- Selected Files Preview -->
+                            <div v-if="selectedFiles.length > 0" class="mt-4 space-y-2">
+                                <p class="text-sm font-medium text-gray-700">Selected Files:</p>
+                                <div class="flex flex-wrap gap-2 justify-center">
+                                    <span v-for="(file, index) in selectedFiles" :key="index"
+                                        class="inline-flex items-center px-3 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                                        {{ file.name }}
+                                        <button @click="removeFile(index)" class="ml-2 hover:text-blue-600">
+                                            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd"
+                                                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                                    clip-rule="evenodd"></path>
+                                            </svg>
+                                        </button>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Documents List -->
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-xl font-semibold text-gray-800">Uploaded Documents</h2>
+                            <button @click="fetchDocuments"
+                                class="text-purple-600 hover:text-purple-800 text-sm font-medium">
+                                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                                    </path>
+                                </svg>
+                                Refresh
+                            </button>
+                        </div>
+
+                        <div v-if="loading" class="text-center py-8">
+                            <div class="inline-flex items-center space-x-2 text-gray-600">
+                                <svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                                    </path>
+                                </svg>
+                                <span>Loading documents...</span>
+                            </div>
+                        </div>
+
+                        <div v-else-if="Object.keys(documents).length > 0" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            <div v-for="(doc, id) in documents" :key="id"
+                                class="document-card bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center space-x-2 mb-2">
+                                            <svg class="w-5 h-5 text-red-500 flex-shrink-0" fill="currentColor"
+                                                viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd"
+                                                    d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"
+                                                    clip-rule="evenodd"></path>
+                                            </svg>
+                                            <h3 class="text-sm font-medium text-gray-900 truncate">{{ doc.filename }}</h3>
+                                        </div>
+                                        <p class="text-xs text-gray-500">Document ID: {{ id }}</p>
+                                    </div>
+                                    <button @click="deleteDocument(id)"
+                                        class="ml-2 p-1 text-gray-400 hover:text-red-600 transition-colors duration-200"
+                                        title="Delete document">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16">
+                                            </path>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-else class="text-center py-12">
+                            <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                                </path>
+                            </svg>
+                            <h3 class="text-lg font-medium text-gray-900 mb-2">No documents uploaded</h3>
+                            <p class="text-gray-500">Upload your first document to get started</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Excel/CSV Section -->
+                <div v-else-if="dbTab === 'excel-csv'">
+                    <div class="mb-8">
+                        <h2 class="text-xl font-semibold text-gray-800 mb-4">Convert Excel/CSV to  Database</h2>
+                        <div class="upload-area rounded-xl p-8 text-center mb-6">
+                            <svg class="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                            </svg>
+                            <p class="text-lg font-medium text-gray-700 mb-2">Drop Excel or CSV files here to convert to  database</p>
+                            <p class="text-sm text-gray-500 mb-4">Support for .xlsx, .xls, and .csv files. Files will be converted to db</p>
+                            <input type="file" ref="csvFile" @change="handleCsvSelect" class="hidden" accept=".xlsx,.xls,.csv" />
+                            <button @click="$refs.csvFile.click()" class="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-2 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl mt-2">Choose Excel/CSV File</button>
+                            <div v-if="selectedCsvFile" class="mt-4 flex flex-col items-center">
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs bg-blue-100 text-blue-800">{{ selectedCsvFile.name }}
+                                    <button @click="removeCsvFile" class="ml-2 hover:text-blue-600">
+                                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                                        </svg>
+                                    </button>
+                                </span>
+                                <button @click="uploadCsvFile" :disabled="uploadingCsv" class="mt-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-6 py-2 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl disabled:cursor-not-allowed">
+                                    <svg v-if="!uploadingCsv" class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 12l2 2 4-4"></path>
+                                    </svg>
+                                    <svg v-else class="w-4 h-4 inline mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                    </svg>
+                                    {{ uploadingCsv ? 'Converting...' : 'Convert to SQLite Database' }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Database Section -->
+                <div v-else-if="dbTab === 'database'">
+                    <div class="mb-8">
+                        <h2 class="text-xl font-semibold text-gray-800 mb-4">Connect to Remote Database</h2>
+                        <div class="text-center">
+                            <button v-if="!showRemoteDbForm" @click="showRemoteDbForm = true" class="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-2 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl">Connect to Remote DB</button>
+                        </div>
+                        <form v-if="showRemoteDbForm" @submit.prevent="submitRemoteDb" class="bg-white rounded-xl p-6 border border-gray-200 shadow-sm max-w-xl mx-auto mt-6">
+                            <div class="mb-4">
+                                <label class="block text-gray-700 font-medium mb-1">Database Type</label>
+                                <select v-model="remoteDb.type" class="w-full border rounded-lg px-3 py-2">
+                                    <option value="mysql">MySQL</option>
+                                    <option value="postgres">PostgreSQL</option>
+                                </select>
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 font-medium mb-1">Host</label>
+                                <input v-model="remoteDb.host" type="text" class="w-full border rounded-lg px-3 py-2" placeholder="e.g. db.example.com" required />
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 font-medium mb-1">Port</label>
+                                <input v-model="remoteDb.port" type="number" class="w-full border rounded-lg px-3 py-2" placeholder="e.g. 3306" required />
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 font-medium mb-1">Database Name</label>
+                                <input v-model="remoteDb.database" type="text" class="w-full border rounded-lg px-3 py-2" placeholder="e.g. mydb" required />
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 font-medium mb-1">Username</label>
+                                <input v-model="remoteDb.username" type="text" class="w-full border rounded-lg px-3 py-2" placeholder="e.g. admin" required />
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 font-medium mb-1">Password</label>
+                                <input v-model="remoteDb.password" type="password" class="w-full border rounded-lg px-3 py-2" required />
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <button type="submit" :disabled="connectingRemoteDb" class="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-2 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl disabled:cursor-not-allowed">
+                                    <svg v-if="!connectingRemoteDb" class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                                    </svg>
+                                    <svg v-else class="w-4 h-4 inline mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                    </svg>
+                                    {{ connectingRemoteDb ? 'Connecting...' : 'Connect' }}
+                                </button>
+                                <button type="button" @click="showRemoteDbForm = false" class="ml-4 bg-gray-200 hover:bg-gray-300 text-gray-700 px-6 py-2 rounded-lg transition-all duration-200">Cancel</button>
+                            </div>
+                        </form>
+                        <div v-if="remoteDbStatus" class="mt-4 text-center">
+                            <span :class="remoteDbStatus.success ? 'text-green-600' : 'text-red-600'">{{ remoteDbStatus.message }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area (only show on chat tab) -->
+        <div v-show="activeTab === 'chat'" class="glass-effect rounded-b-2xl p-6 border-t border-white/20">
+            <div class="flex space-x-4">
+                <div class="flex-1 relative">
+                    <textarea v-model="query" @keydown.enter.prevent="handleEnter" placeholder="Type your message..."
+                        class="w-full resize-none rounded-xl border border-gray-200 px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 shadow-sm"
+                        rows="1" :disabled="isTyping" ref="textarea"></textarea>
+                    <button @click="sendQuery" :disabled="!query.trim() || isTyping"
+                        class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:from-gray-400 disabled:to-gray-400 text-white rounded-lg p-2 transition-all duration-200 shadow-lg hover:shadow-xl disabled:cursor-not-allowed">
+                        <svg v-if="!isTyping" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                        </svg>
+                        <svg v-else class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                            </path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <p class="text-xs text-gray-500 mt-2 text-center">Press Enter to send, Shift+Enter for new line</p>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        // Helper to get API base URL dynamically
+        function getApiBaseUrl() {
+            // You can customize the path if your API is on a subpath
+            // e.g. return `${window.location.protocol}//${window.location.hostname}:8080`;
+            // For same host/port as frontend:
+            return `${window.location.protocol}//${window.location.host}`;
+        }
+
+        createApp({
+            data() {
+                return {
+                    activeTab: 'chat',
+                    dbTab: 'documents',
+                    query: '',
+                    messages: [],
+                    isTyping: false,
+                    documents: {},
+                    selectedFiles: [],
+                    uploading: false,
+                    loading: false,
+                    dragOver: false,
+                    // Database tab state
+                    selectedCsvFile: null,
+                    uploadingCsv: false,
+                    remoteDb: {
+                        type: 'mysql',
+                        host: '',
+                        port: '',
+                        database: '',
+                        username: '',
+                        password: ''
+                    },
+                    connectingRemoteDb: false,
+                    remoteDbStatus: null,
+                    showRemoteDbForm: false,
+                    showLogin: false,
+                    loginId: '',
+                    loginPassword: '',
+                    loggingIn: false,
+                    loginError: '',
+                    isLoggedIn: false,
+                };
+            },
+            methods: {
+                handleEnter(event) {
+                    if (event.shiftKey) {
+                        return; // Allow new line
+                    }
+                    this.sendQuery();
+                },
+
+                formatTimestamp() {
+                    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                },
+
+                parseMarkdown(text) {
+                    // Configure marked options
+                    marked.setOptions({
+                        breaks: true,
+                        gfm: true
+                    });
+                    return marked.parse(text);
+                },
+
+                async sendQuery() {
+                    if (!this.query.trim() || this.isTyping) return;
+
+                    const userMessage = {
+                        type: 'user',
+                        content: this.query,
+                        timestamp: this.formatTimestamp()
+                    };
+
+                    this.messages.push(userMessage);
+                    const currentQuery = this.query;
+                    this.query = '';
+                    this.isTyping = true;
+
+                    // Auto-resize textarea
+                    this.$nextTick(() => {
+                        this.$refs.textarea.style.height = 'auto';
+                    });
+
+                    // Scroll to bottom
+                    this.$nextTick(() => {
+                        this.scrollToBottom();
+                    });
+
+                    // Add a placeholder message for the streaming response
+                    const agentMessageIndex = this.messages.length;
+                    this.messages.push({
+                        type: 'agent',
+                        content: '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>',
+                        timestamp: this.formatTimestamp()
+                    });
+
+                    try {
+                        const response = await fetch(`${getApiBaseUrl()}/query/stream`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ query: currentQuery }),
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
+                        let accumulatedContent = '';
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            
+                            if (done) break;
+                            
+                            const chunk = decoder.decode(value);
+                            const lines = chunk.split('\n');
+                            
+                            for (const line of lines) {
+                                if (line.startsWith('data: ')) {
+                                    try {
+                                        const data = JSON.parse(line.slice(6));
+                                        
+                                        if (data.type === 'chunk') {
+                                            accumulatedContent += data.chunk;
+                                            // Update the message content with accumulated text
+                                            this.messages[agentMessageIndex].content = this.parseMarkdown(accumulatedContent);
+                                            this.$nextTick(() => {
+                                                this.scrollToBottom();
+                                            });
+                                        } else if (data.type === 'end') {
+                                            // Streaming completed
+                                            break;
+                                        } else if (data.type === 'error') {
+                                            this.messages[agentMessageIndex].content = `<p class="text-red-600">❌ Error: ${data.error}</p>`;
+                                            break;
+                                        }
+                                    } catch (e) {
+                                        console.error('Error parsing SSE data:', e);
+                                    }
+                                }
+                            }
+                        }
+
+                    } catch (error) {
+                        console.error('Error:', error);
+                        this.messages[agentMessageIndex].content = `<p class="text-red-600">❌ Error: Unable to connect to the server. Please check if the server is running on localhost:9000.</p>`;
+                    } finally {
+                        this.isTyping = false;
+                        this.$nextTick(() => {
+                            this.scrollToBottom();
+                        });
+                    }
+                },
+
+                scrollToBottom() {
+                    const container = document.querySelector('.messages-container');
+                    if (container) {
+                        container.scrollTop = container.scrollHeight;
+                    }
+                },
+
+                autoResize() {
+                    const textarea = this.$refs.textarea;
+                    if (textarea) {
+                        textarea.style.height = 'auto';
+                        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+                    }
+                },
+
+                // Document management methods
+                async fetchDocuments() {
+                    this.loading = true;
+                    try {
+                        const res = await fetch(`${getApiBaseUrl()}/document/`);
+                        const data = await res.json();
+                        if (!data.message) {
+                            this.documents = data;
+                        } else {
+                            this.documents = {};
+                        }
+                    } catch (error) {
+                        console.error('Error fetching documents:', error);
+                        this.documents = {};
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                handleFileSelect(event) {
+                    this.selectedFiles = Array.from(event.target.files);
+                },
+
+                handleDrop(event) {
+                    event.preventDefault();
+                    this.dragOver = false;
+                    const files = Array.from(event.dataTransfer.files);
+                    this.selectedFiles = [...this.selectedFiles, ...files];
+                },
+
+                handleDragLeave(event) {
+                    if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget)) {
+                        this.dragOver = false;
+                    }
+                },
+
+                removeFile(index) {
+                    this.selectedFiles.splice(index, 1);
+                },
+
+                async uploadFiles() {
+                    if (this.selectedFiles.length === 0) return;
+                    const token = this.getToken();
+                    if (!token) {
+                        alert('Please login first.');
+                        return;
+                    }
+                    this.uploading = true;
+                    try {
+                        const formData = new FormData();
+                        this.selectedFiles.forEach(file => {
+                            formData.append('files', file);
+                        });
+
+                        const res = await fetch(`${getApiBaseUrl()}/document/?token=${token}`, {
+                            method: 'POST',
+                            body: formData,
+                        });
+
+                        if (res.status === 401) {
+                            this.logout();
+                            alert('Session expired. Please login again.');
+                            return;
+                        }
+                        if (res.ok) {
+                            this.selectedFiles = [];
+                            this.$refs.files.value = '';
+                            await this.fetchDocuments();
+                        } else {
+                            throw new Error('Upload failed');
+                        }
+                    } catch (error) {
+                        console.error('Error uploading files:', error);
+                        alert('Error uploading files. Please try again.');
+                    } finally {
+                        this.uploading = false;
+                    }
+                },
+
+                async deleteDocument(id) {
+                    const token = this.getToken();
+                    if (!token) {
+                        alert('Please login first.');
+                        return;
+                    }
+                    if (!confirm('Are you sure you want to delete this document?')) return;
+                    try {
+                        const res = await fetch(`${getApiBaseUrl()}/document/${id}?token=${token}`, {
+                            method: 'DELETE',
+                        });
+                        if (res.status === 401) {
+                            this.logout();
+                            alert('Session expired. Please login again.');
+                            return;
+                        }
+                        await this.fetchDocuments();
+                    } catch (error) {
+                        console.error('Error deleting document:', error);
+                        alert('Error deleting document. Please try again.');
+                    }
+                },
+
+                handleCsvSelect(event) {
+                    this.selectedCsvFile = event.target.files[0];
+                },
+                removeCsvFile() {
+                    this.selectedCsvFile = null;
+                    this.$refs.csvFile.value = '';
+                },
+                async uploadCsvFile() {
+                    if (!this.selectedCsvFile) return;
+                    const token = this.getToken();
+                    if (!token) {
+                        alert('Please login first.');
+                        return;
+                    }
+                    this.uploadingCsv = true;
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', this.selectedCsvFile);
+                        const res = await fetch(`${getApiBaseUrl()}/upload-csv?token=${token}`, {
+                            method: 'POST',
+                            body: formData,
+                        });
+                        if (res.status === 401) {
+                            this.logout();
+                            alert('Session expired. Please login again.');
+                            return;
+                        }
+                        if (res.ok) {
+                            this.selectedCsvFile = null;
+                            this.$refs.csvFile.value = '';
+                            alert('Excel/CSV file converted to SQLite database successfully!');
+                        } else {
+                            throw new Error('Upload failed');
+                        }
+                    } catch (error) {
+                        console.error('Error uploading CSV file:', error);
+                        alert('Error converting Excel/CSV file to SQLite database. Please try again.');
+                    } finally {
+                        this.uploadingCsv = false;
+                    }
+                },
+                async submitRemoteDb() {
+                    const token = this.getToken();
+                    if (!token) {
+                        alert('Please login first.');
+                        return;
+                    }
+                    this.connectingRemoteDb = true;
+                    this.remoteDbStatus = null;
+                    try {
+                        const res = await fetch(`${getApiBaseUrl()}/update-remote-db?token=${token}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.remoteDb),
+                        });
+                        if (res.status === 401) {
+                            this.logout();
+                            this.remoteDbStatus = { success: false, message: 'Session expired. Please login again.' };
+                            return;
+                        }
+                        const data = await res.json();
+                        if (res.ok) {
+                            this.remoteDbStatus = { success: true, message: data.message || 'Connected successfully!' };
+                        } else {
+                            this.remoteDbStatus = { success: false, message: data.message || 'Connection failed.' };
+                        }
+                    } catch (error) {
+                        console.error('Error connecting to remote DB:', error);
+                        this.remoteDbStatus = { success: false, message: 'Error connecting to remote DB.' };
+                    } finally {
+                        this.connectingRemoteDb = false;
+                    }
+                },
+                async login() {
+                    this.loggingIn = true;
+                    this.loginError = '';
+                    try {
+                        const form = new FormData();
+                        form.append('admin_id', this.loginId);
+                        form.append('password', this.loginPassword);
+                        const res = await fetch(`${getApiBaseUrl()}/login`, {
+                            method: 'POST',
+                            body: form
+                        });
+                        if (!res.ok) {
+                            throw new Error('Invalid credentials');
+                        }
+                        const data = await res.json();
+                        localStorage.setItem('agentflow_token', data.token);
+                        this.isLoggedIn = true;
+                        this.showLogin = false;
+                        this.loginId = '';
+                        this.loginPassword = '';
+                    } catch (e) {
+                        this.loginError = 'Invalid credentials';
+                    } finally {
+                        this.loggingIn = false;
+                    }
+                },
+                logout() {
+                    localStorage.removeItem('agentflow_token');
+                    this.isLoggedIn = false;
+                },
+                getToken() {
+                    return localStorage.getItem('agentflow_token');
+                },
+            },
+
+            watch: {
+                query() {
+                    this.$nextTick(() => {
+                        this.autoResize();
+                    });
+                },
+
+                activeTab(newTab) {
+                    if (newTab === 'documents') {
+                        this.fetchDocuments();
+                    }
+                }
+            },
+
+            mounted() {
+                // Focus on textarea when component mounts
+                this.$nextTick(() => {
+                    if (this.$refs.textarea) {
+                        this.$refs.textarea.focus();
+                    }
+                });
+
+                // Fetch documents on initial load
+                this.fetchDocuments();
+                this.isLoggedIn = !!localStorage.getItem('agentflow_token');
+            }
+        }).mount('#app');
+    </script>
+</body>
+
+</html>

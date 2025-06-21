@@ -1,0 +1,27 @@
+# Core Google ADK SDK
+google-adk
+
+# Stock data retrieval
+yfinance==0.2.56
+
+# System monitoring (used by some agents/tools)
+psutil==5.9.5
+
+# LLM abstraction (OpenAI, Anthropic, etc.)
+litellm==1.66.3
+
+# Google Gemini (Generative AI) SDK
+google-generativeai==0.8.5  # You can pin this for compatibility
+
+# Environment variable support
+python-dotenv  # latest version
+
+
+# LangChain for Google Gemini
+langchain-google-genai
+
+
+langchain-community
+
+pypdf
+faiss-cpu
