@@ -14,7 +14,7 @@ embeddings = GoogleGenerativeAIEmbeddings(
 
 def load_vectorstore():
     """Load and merge all FAISS stores under DB_FOLDER."""
-    DB_FOLDER = "./vectorstores"
+    DB_FOLDER = "/tmp/vectorstores"
     os.makedirs(DB_FOLDER, exist_ok=True)
     
     stores = []

@@ -12,9 +12,12 @@ load_dotenv()
 
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
+    # DB_FOLDER = "/tmp/vectorstores"
+
+
 # Ensure required directories exist
 DB_DIR = Path("./data/db")
-VECTORSTORE_DIR = Path("./vectorstores")
+VECTORSTORE_DIR = Path("/tmp/vectorstores")
 DB_DIR.mkdir(parents=True, exist_ok=True)
 VECTORSTORE_DIR.mkdir(parents=True, exist_ok=True)
 

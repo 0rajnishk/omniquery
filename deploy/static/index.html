@@ -743,7 +743,7 @@
                 async fetchDocuments() {
                     this.loading = true;
                     try {
-                        const res = await fetch(`${getApiBaseUrl()}/document`);
+                        const res = await fetch(`${getApiBaseUrl()}/document/`);
                         const data = await res.json();
                         if (!data.message) {
                             this.documents = data;
@@ -793,7 +793,7 @@
                             formData.append('files', file);
                         });
 
-                        const res = await fetch(`${getApiBaseUrl()}/document?token=${token}`, {
+                        const res = await fetch(`${getApiBaseUrl()}/document/?token=${token}`, {
                             method: 'POST',
                             body: formData,
                         });

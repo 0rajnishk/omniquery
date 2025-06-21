@@ -224,12 +224,12 @@ def login(admin_id: str = Form(...), password: str = Form(...)):
         raise HTTPException(status_code=401, detail="Invalid credentials.")
 
 
-    # ─── Document Endpoints ────────────────────────────────────────────
-    @router.post("/")
-    async def upload_document(request: Request, files: List[UploadFile] = File(...), _: None = Depends(require_admin_token)):
-        logger.info(f"Uploading {len(files)} file(s): {[file.filename for file in files]}")
-        doc.upload_document(files)
-        return {"message": "Upload document", "files": [file.filename for file in files]}
+# ─── Document Endpoints ────────────────────────────────────────────
+@router.post("/")
+async def upload_document(request: Request, files: List[UploadFile] = File(...), _: None = Depends(require_admin_token)):
+    logger.info(f"Uploading {len(files)} file(s): {[file.filename for file in files]}")
+    doc.upload_document(files)
+    return {"message": "Upload document", "files": [file.filename for file in files]}
 
 @router.get("/{document_id}")
 async def get_document(document_id: str):
