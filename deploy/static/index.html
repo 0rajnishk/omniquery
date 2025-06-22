@@ -515,7 +515,7 @@
                                     <svg v-else class="w-4 h-4 inline mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                                     </svg>
-                                    {{ uploadingCsv ? 'Converting...' : 'Convert to SQLite Database' }}
+                                    {{ uploadingCsv ? 'Converting...' : 'Convert to  Database' }}
                                 </button>
                             </div>
                         </div>
@@ -909,13 +909,13 @@
                         if (res.ok) {
                             this.selectedCsvFile = null;
                             this.$refs.csvFile.value = '';
-                            alert('Excel/CSV file converted to SQLite database successfully!');
+                            alert('Excel/CSV file converted to  database successfully!');
                         } else {
                             throw new Error('Upload failed');
                         }
                     } catch (error) {
                         console.error('Error uploading CSV file:', error);
-                        alert('Error converting Excel/CSV file to SQLite database. Please try again.');
+                        alert('Error converting Excel/CSV file to  database. Please try again.');
                     } finally {
                         this.uploadingCsv = false;
                     }

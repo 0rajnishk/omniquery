@@ -1,0 +1,7 @@
+venv
+video
+
+# ignore pycache directories
+__pycache__
+# ignore Python bytecode files
+*.pyc

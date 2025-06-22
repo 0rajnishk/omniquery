@@ -4,7 +4,8 @@ import uuid
 import logging
 import shutil
 from typing import List
-from fastapi import FastAPI, HTTPException, UploadFile, File, APIRouter, Form, Request, Depends, StreamingResponse
+from fastapi import FastAPI, HTTPException, UploadFile, File, APIRouter, Form, Request, Depends
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 import json
 from datetime import datetime, timezone
@@ -21,7 +22,6 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from dotenv import load_dotenv
 
 import google.generativeai as genai
@@ -321,18 +321,21 @@ async def process_query_stream(request: QueryRequest):
     
     async def generate_stream():
         try:
-            # Call the agent and get the streaming response
+            # Call the agent and get the streaming response for all queries
             async for chunk in call_agent_stream_async(runner, USER_ID, SESSION_ID, user_input):
                 if chunk:
                     # Send the chunk as a Server-Sent Event
-                    yield f"data: {json.dumps({'chunk': chunk, 'type': 'chunk'})}\n\n"
+                    chunk_data = {'chunk': chunk, 'type': 'chunk'}
+                    yield f"data: {json.dumps(chunk_data)}\n\n"
             
             # Send end signal
-            yield f"data: {json.dumps({'type': 'end'})}\n\n"
+            end_data = {'type': 'end'}
+            yield f"data: {json.dumps(end_data)}\n\n"
             
         except Exception as e:
             logger.error(f"Error in streaming response: {e}")
-            yield f"data: {json.dumps({'error': str(e), 'type': 'error'})}\n\n"
+            error_data = {'error': str(e), 'type': 'error'}
+            yield f"data: {json.dumps(error_data)}\n\n"
     
     return StreamingResponse(
         generate_stream(),
@@ -353,18 +356,19 @@ async def call_agent_stream_async(runner, user_id: str, session_id: str, user_in
         response = await call_agent_async(runner, user_id, session_id, user_input)
         
         if response:
-            # Simulate streaming by sending the response in chunks
-            words = response.split()
-            for i, word in enumerate(words):
-                yield word + " "
-                # Add a small delay to simulate real streaming
-                await asyncio.sleep(0.05)
+            # Stream the response in larger chunks to preserve formatting
+            lines = response.split('\n')
+            for line in lines:
+                if line.strip():  # Only send non-empty lines
+                    yield line + '\n'
+                    # Add a small delay to simulate real streaming
+                    await asyncio.sleep(0.1)
         else:
-            yield "No response available."
+            yield "No response available.\n"
             
     except Exception as e:
         logger.error(f"Error in agent streaming: {e}")
-        yield f"Error: {str(e)}"
+        yield f"Error: {str(e)}\n"
 
 # ─── New Endpoints ─────────────────────────────────────────────────
 def sanitize(name: str) -> str:
