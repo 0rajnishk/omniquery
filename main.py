@@ -29,8 +29,12 @@ from utils import add_user_query_to_history, call_agent_async
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from test.agent import test_agent
+from google.cloud import storage
+from google.cloud import bigquery
+import io
 
 load_dotenv()
+
 
 import os
 print("GOOGLE_API_KEY:", os.getenv("GOOGLE_API_KEY"))
@@ -204,7 +208,7 @@ def get_index():
 
 # ─── Simple Admin Auth ─────────────────────────────────────────────
 ADMIN_ID = "admin"
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Super_Uagents")  # Change this in production!
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "123456")  # Change this in production!
 current_token = None  # Stores the current valid session token
 
 def get_token_from_request(request: Request):
@@ -232,7 +236,23 @@ def login(admin_id: str = Form(...), password: str = Form(...)):
 async def upload_document(request: Request, files: List[UploadFile] = File(...), _: None = Depends(require_admin_token)):
     logger.info(f"Uploading {len(files)} file(s): {[file.filename for file in files]}")
     doc.upload_document(files)
-    return {"message": "Upload document", "files": [file.filename for file in files]}
+    # Upload each file to GCS
+    gcs_files = []
+    for file in files:
+        file.file.seek(0)
+        content = file.file.read()
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        gcs_filename = f"{timestamp}_{file.filename}"
+        bucket = storage.Client().bucket(os.getenv("GCS_BUCKET_NAME", "your-bucket-name"))
+        blob = bucket.blob(gcs_filename)
+        blob.upload_from_string(content, content_type=file.content_type)
+        gcs_files.append({
+            "filename": gcs_filename,
+            "bucket": os.getenv("GCS_BUCKET_NAME", "your-bucket-name"),
+            "gcs_url": f"gs://{os.getenv('GCS_BUCKET_NAME', 'your-bucket-name')}/{gcs_filename}",
+            "public_url": f"https://storage.googleapis.com/{os.getenv('GCS_BUCKET_NAME', 'your-bucket-name')}/{gcs_filename}"
+        })
+    return {"message": "Upload document", "files": [file.filename for file in files], "gcs_files": gcs_files}
 
 @router.get("/{document_id}")
 async def get_document(document_id: str):
@@ -459,22 +479,69 @@ async def upload_csv(request: Request, file: UploadFile = File(...), _: None = D
         shutil.copyfileobj(file.file, f_out)
     logger.info(f"Uploaded file saved temporarily as {temp_file_path}")
 
+    gcs_info = None
+    bq_info = None
     try:
-        # Convert to SQLite database
+        # Upload to GCS
+        file.file.seek(0)
+        content = file.file.read()
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        gcs_filename = f"{timestamp}_{csv_name}"
+        bucket = storage.Client().bucket(os.getenv("GCS_BUCKET_NAME", "your-bucket-name"))
+        blob = bucket.blob(gcs_filename)
+        blob.upload_from_string(content, content_type=file.content_type)
+        gcs_info = {
+            "filename": gcs_filename,
+            "bucket": os.getenv("GCS_BUCKET_NAME", "your-bucket-name"),
+            "gcs_url": f"gs://{os.getenv('GCS_BUCKET_NAME', 'your-bucket-name')}/{gcs_filename}",
+            "public_url": f"https://storage.googleapis.com/{os.getenv('GCS_BUCKET_NAME', 'your-bucket-name')}/{gcs_filename}"
+        }
+
+        # Convert to SQLite database (existing logic)
         db_folder = DB_DATA_FOLDER
         db_path = os.path.join(db_folder, "medical.db")
-        
-        # Convert Excel/CSV to SQLite
         excel_to_sqlite(temp_file_path, db_path)
-        
         logger.info(f"Excel/CSV file converted to SQLite database: {db_path}")
-        
-        return {"message": "Excel/CSV file converted to SQLite database successfully", "filename": csv_name, "db_path": db_path}
-        
+
+        # Upload CSV/Excel to BigQuery
+        file_ext = os.path.splitext(csv_name)[1].lower()
+        table_name = os.path.splitext(csv_name)[0].replace(" ", "_").replace("-", "_").lower()
+        if file_ext == ".csv":
+            file.file.seek(0)
+            content = file.file.read().decode('utf-8')
+            df = pd.read_csv(io.StringIO(content))
+        elif file_ext in [".xlsx", ".xls"]:
+            file.file.seek(0)
+            df = pd.read_excel(file.file)
+        else:
+            raise ValueError(f"Unsupported file type: {file_ext}")
+        if df.empty:
+            raise HTTPException(status_code=400, detail="CSV/Excel file is empty")
+        df.columns = [col.replace(' ', '_').replace('-', '_').lower() for col in df.columns]
+        table_id = f"{os.getenv('BQ_PROJECT_ID', 'your-project-id')}.{os.getenv('BQ_DATASET_ID', 'your-dataset-id')}.{table_name}"
+        job_config = bigquery.LoadJobConfig(
+            autodetect=True,
+            write_disposition="WRITE_TRUNCATE",
+            skip_leading_rows=0,
+        )
+        job = bigquery.Client(project=os.getenv('BQ_PROJECT_ID', 'your-project-id')).load_table_from_dataframe(df, table_id, job_config=job_config)
+        job.result()
+        table = bigquery.Client(project=os.getenv('BQ_PROJECT_ID', 'your-project-id')).get_table(table_id)
+        bq_info = {
+            "table_id": table_id,
+            "rows_loaded": table.num_rows,
+            "columns": len(table.schema),
+            "schema": [{"name": field.name, "type": field.field_type} for field in table.schema]
+        }
+        return {
+            "message": "Excel/CSV file uploaded to GCS and BigQuery successfully",
+            "filename": csv_name,
+            "gcs_info": gcs_info,
+            "bigquery_info": bq_info
+        }
     except Exception as e:
-        logger.error(f"Error converting file to SQLite: {e}")
-        raise HTTPException(status_code=500, detail=f"Error converting file to SQLite: {str(e)}")
-    
+        logger.error(f"Error uploading file to GCS/BigQuery: {e}")
+        raise HTTPException(status_code=500, detail=f"Error uploading file to GCS/BigQuery: {str(e)}")
     finally:
         # Clean up temporary file
         try:

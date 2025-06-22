@@ -27,3 +27,8 @@ pypdf
 faiss-cpu
 
 openpyxl
+
+# Google Cloud Storage and BigQuery integration
+google-cloud-storage
+google-cloud-bigquery
+pandas

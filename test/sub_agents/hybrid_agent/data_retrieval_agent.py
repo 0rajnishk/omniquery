@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 from google.adk.agents import Agent
 from typing import Dict, Any
-import sqlite3
+from google.cloud import bigquery
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 import os
@@ -12,6 +12,11 @@ load_dotenv()
 
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
+# BigQuery setup
+BQ_PROJECT_ID = os.getenv("BQ_PROJECT_ID", "your-project-id")
+BQ_DATASET_ID = os.getenv("BQ_DATASET_ID", "your-dataset-id")
+bq_client = bigquery.Client(project=BQ_PROJECT_ID)
+
 # Ensure required directories exist
 DB_DIR = Path("./data/db")
 VECTORSTORE_DIR = Path("./vectorstores")
@@ -19,35 +24,21 @@ DB_DIR.mkdir(parents=True, exist_ok=True)
 VECTORSTORE_DIR.mkdir(parents=True, exist_ok=True)
 
 def execute_sql_query(query: str) -> Dict[str, Any]:
-    """Execute SQL query and return results."""
-    db_path = DB_DIR / "medical.db"
-    if not db_path.exists():
-        return {
-            "status": "error",
-            "message": "Database file not found. Please ensure the database exists at ./data/db/medical.db"
-        }
-    
+    """Execute SQL query on BigQuery and return results."""
     try:
-        conn = sqlite3.connect(str(db_path))
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute(query)
-        rows = cursor.fetchall()
+        query_job = bq_client.query(query)
+        rows = list(query_job)
+        data = [dict(row.items()) for row in rows]
         return {
             "status": "success",
-            "data": [dict(r) for r in rows],
-            "message": f"Successfully retrieved {len(rows)} records"
+            "data": data,
+            "message": f"Successfully retrieved {len(data)} records"
         }
     except Exception as e:
         return {
             "status": "error",
-            "message": f"SQL execution error: {str(e)}"
+            "message": f"BigQuery execution error: {str(e)}"
         }
-    finally:
-        try:
-            conn.close()
-        except:
-            pass
 
 def similarity_search(query: str) -> Dict[str, Any]:
     """Perform similarity search on FAISS database, loading and merging all stores like document_agent."""
@@ -133,9 +124,11 @@ def _prepare_data_summary(data):
             return f"The direct answer value is: {data[0][key]}"
         summary_parts = [f"Total Records: {len(data)}"]
         if len(data) <= 5:
-            summary_parts.append(f"All Data:\n{data}")
+            import json
+            summary_parts.append(f"All Data:\n{json.dumps(data, indent=2)}")
         else:
-            summary_parts.append(f"Sample Data (first 5 rows):\n{data[:5]}")
+            import json
+            summary_parts.append(f"Sample Data (first 5 rows):\n{json.dumps(data[:5], indent=2)}")
             summary_parts.append(f"[... {len(data) - 5} more rows]")
         cols = ", ".join(data[0].keys())
         summary_parts.append(f"Columns: {cols}")

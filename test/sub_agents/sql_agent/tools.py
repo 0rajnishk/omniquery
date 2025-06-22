@@ -1,14 +1,16 @@
 import os
 import json
-import sqlite3
 import re
 from typing import List, Dict, Any
 from dotenv import load_dotenv
+from google.cloud import bigquery
 
 load_dotenv()
 
-# Database setup
-DB_PATH = "./data/db/medical.db"  # Update this path as needed
+# BigQuery setup
+BQ_PROJECT_ID = os.getenv("BQ_PROJECT_ID", "your-project-id")
+BQ_DATASET_ID = os.getenv("BQ_DATASET_ID", "your-dataset-id")
+bq_client = bigquery.Client(project=BQ_PROJECT_ID)
 
 def _referenced_tables(sql: str) -> List[str]:
     """Extract table names appearing after FROM or JOIN."""
@@ -21,63 +23,34 @@ def _is_sql_valid(sql: str, allowed: List[str]) -> bool:
     return all(t in allowed for t in _referenced_tables(sql))
 
 def _get_schema_info() -> str:
-    """Return schema (table, columns, sample categorical values)."""
+    """Return schema (table, columns, sample categorical values) from BigQuery."""
     try:
         info_lines: List[str] = []
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-
-            # List user-defined tables
-            cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';"
-            )
-            tables = [row["name"] for row in cursor.fetchall()]
-
-            for table in tables:
-                info_lines.append(f"\nTable: {table}")
-                cursor.execute(f"PRAGMA table_info('{table}')")
-                columns = cursor.fetchall()
-
-                for col in columns:
-                    col_name = col["name"]
-                    col_type = col["type"] or "UNKNOWN"
-                    samples = ""
-
-                    # For text-like columns, fetch up to 10 distinct sample values
-                    if col_type.upper() in ("TEXT", ""):
-                        try:
-                            cursor.execute(
-                                f"SELECT DISTINCT {col_name} FROM {table} WHERE {col_name} IS NOT NULL LIMIT 10"
-                            )
-                            vals = [str(r[0]) for r in cursor.fetchall()]
-                            if vals:
-                                samples = f" (sample values: {', '.join(vals)})"
-                        except sqlite3.OperationalError:
-                            samples = " (error fetching sample values)"
-
-                    info_lines.append(f"  - {col_name} ({col_type}){samples}")
-
+        # List tables in the dataset
+        tables = list(bq_client.list_tables(BQ_DATASET_ID))
+        for table in tables:
+            table_ref = table.table_id
+            info_lines.append(f"\nTable: {table_ref}")
+            # Get table schema
+            table_obj = bq_client.get_table(f"{BQ_PROJECT_ID}.{BQ_DATASET_ID}.{table_ref}")
+            for field in table_obj.schema:
+                col_name = field.name
+                col_type = field.field_type
+                samples = ""
+                # Try to get up to 10 distinct sample values for STRING fields
+                if col_type.upper() == "STRING":
+                    try:
+                        query = f"SELECT DISTINCT `{col_name}` FROM `{BQ_PROJECT_ID}.{BQ_DATASET_ID}.{table_ref}` WHERE `{col_name}` IS NOT NULL LIMIT 10"
+                        query_job = bq_client.query(query)
+                        vals = [str(row[col_name]) for row in query_job]
+                        if vals:
+                            samples = f" (sample values: {', '.join(vals)})"
+                    except Exception:
+                        samples = " (error fetching sample values)"
+                info_lines.append(f"  - {col_name} ({col_type}){samples}")
         return "\n".join(info_lines)
     except Exception as e:
-        return """
-Table: med
-  - name (TEXT) (sample values: Bobby Jackson, Leslie Terry, Danny Smith)
-  - age (INTEGER)
-  - gender (TEXT) (sample values: Male, Female)
-  - blood_type (TEXT) (sample values: B-, A+, A-, O+, AB+)
-  - medical_condition (TEXT) (sample values: Cancer, Obesity, Diabetes)
-  - date_of_admission (TIMESTAMP)
-  - doctor (TEXT) (sample values: Matthew Smith, Samantha Davies)
-  - hospital (TEXT) (sample values: Sons and Miller, Kim Inc)
-  - insurance_provider (TEXT) (sample values: Blue Cross, Medicare, Aetna)
-  - billing_amount (REAL)
-  - room_number (INTEGER)
-  - admission_type (TEXT) (sample values: Urgent, Emergency, Elective)
-  - discharge_date (TIMESTAMP)
-  - medication (TEXT) (sample values: Paracetamol, Ibuprofen, Aspirin)
-  - test_results (TEXT) (sample values: Normal, Inconclusive, Abnormal)
-"""
+        return f"Error retrieving schema from BigQuery: {e}"
 
 def _clean_sql_response(sql_query: str) -> str:
     """Cleans SQL output and ensures safety."""
@@ -101,22 +74,14 @@ def _clean_sql_response(sql_query: str) -> str:
     return sql_query
 
 def _execute_sql(sql_query: str) -> List[Dict[str, Any]]:
-    """Executes the given SQL query and returns the result as a list of dicts."""
+    """Executes the given SQL query on BigQuery and returns the result as a list of dicts."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute(sql_query)
-        rows = cursor.fetchall()
-        data = [dict(r) for r in rows]
+        query_job = bq_client.query(sql_query)
+        rows = list(query_job)
+        data = [dict(row.items()) for row in rows]
         return data
     except Exception as e:
-        raise Exception(f"SQL execution error: {e}")
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        raise Exception(f"BigQuery execution error: {e}")
 
 def _prepare_data_summary(data: List[Dict[str, Any]]) -> str:
     """Prepares a summary of the data for answer generation."""
@@ -139,7 +104,7 @@ def _prepare_data_summary(data: List[Dict[str, Any]]) -> str:
 
 def execute_sql_query(query: str) -> str:
     """
-    Execute a SQL query and return formatted results.
+    Execute a SQL query and return formatted results from BigQuery.
     
     Args:
         query: The SQL query to execute
@@ -161,6 +126,6 @@ def execute_sql_query(query: str) -> str:
         return f"Error executing query: {str(e)}"
 
 def get_schema() -> str:
-    """Get the database schema information."""
-    print("Retrieving schema information...", '*'*50)
+    """Get the database schema information from BigQuery."""
+    print("Retrieving schema information from BigQuery...", '*'*50)
     return _get_schema_info() 

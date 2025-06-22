@@ -1,0 +1,11 @@
+just-for-reference.py
+commands.md
+# Ignore Python bytecode files
+__pycache__/
+*.py[cod]
+# Ignore virtual environment directories
+venv/
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+r.md
+.env
